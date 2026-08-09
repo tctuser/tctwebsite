@@ -117,7 +117,12 @@ export function BookingPortal({
   const [weather, setWeather] = useState<ClubWeather | null>(null);
 
   const loadSchedule = async () => {
-    if (!supabase) return;
+    if (!supabase || !userId) {
+      setCourts([]);
+      setSchedule([]);
+      setLoading(false);
+      return;
+    }
     setLoading(true);
     const [{ data: courtData }, { data: scheduleData, error }, { data: rulesData }, { data: nextEventData }] = await Promise.all([
       supabase
@@ -170,7 +175,7 @@ export function BookingPortal({
 
   useEffect(() => {
     void loadSchedule();
-  }, [day, kind]);
+  }, [day, kind, userId]);
   useEffect(() => {
     void loadMyBookings();
   }, [userId]);
@@ -180,6 +185,10 @@ export function BookingPortal({
   useEffect(() => {
     const controller = new AbortController();
     const loadWeather = async () => {
+      if (!userId) {
+        setWeather(null);
+        return;
+      }
       try {
         const response = await fetch("https://api.open-meteo.com/v1/forecast?latitude=49.7499&longitude=6.6371&current=temperature_2m,weather_code,wind_speed_10m&timezone=Europe%2FBerlin", { signal: controller.signal });
         const data = await response.json();
@@ -196,7 +205,7 @@ export function BookingPortal({
       controller.abort();
       window.clearInterval(refreshInterval);
     };
-  }, []);
+  }, [userId]);
 
   const visibleCourts = courts.filter((court) => court.kind === kind);
   const selectedEnd = pending ? new Date(pending.start.getTime() + minutes * 60_000) : null;
@@ -389,6 +398,24 @@ export function BookingPortal({
     setMyWaitlist((items) => items.filter((entry) => entry.id !== id));
   };
 
+  if (!userId) {
+    return (
+      <section className="booking-section booking-auth-gate" id="buchung">
+        <div className="container">
+          <div className="booking-auth-card">
+            <span className="booking-auth-icon"><LockKeyhole size={24} /></span>
+            <p className="eyebrow"><span /> TCT Mitgliederbereich</p>
+            <h2>Erst anmelden.<br /><em>Dann aufschlagen.</em></h2>
+            <p>Freie Plätze, Buchungen, Wartelisten und persönliche Kontingente sind ausschließlich für angemeldete TCT-Mitglieder sichtbar.</p>
+            <button className="button button-light" type="button" onClick={onRequireLogin}>
+              Anmelden oder Konto erstellen <ArrowRight size={18} />
+            </button>
+          </div>
+        </div>
+      </section>
+    );
+  }
+
   return (
     <section className="booking-section" id="buchung">
       <div className="container">
@@ -398,11 +425,6 @@ export function BookingPortal({
             <h2>Platz.<br /><em>Einfach buchen.</em></h2>
             <p>Wähle Sportart, Court und Spielzeit. Freie Felder sind sofort buchbar.</p>
           </div>
-          {!userId && (
-            <button className="booking-login" onClick={onRequireLogin}>
-              <LockKeyhole size={16} /> Anmelden zum Buchen
-            </button>
-          )}
         </div>
 
         <div className="booking-sport-cards">

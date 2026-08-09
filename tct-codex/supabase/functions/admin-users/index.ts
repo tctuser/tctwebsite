@@ -50,14 +50,7 @@ Deno.serve(async (request) => {
     return Response.json(error ? { error: error.message } : { ok: true }, { headers: corsHeaders })
   }
   if (body.action === 'changeOwnEmail') {
-    const email = typeof body.email === 'string' ? body.email.trim() : ''
-    if (!/^\S+@\S+\.\S+$/.test(email)) return Response.json({ error: 'Bitte eine gültige E-Mail-Adresse eingeben.' }, { headers: corsHeaders })
-    const { error } = await admin.auth.admin.updateUserById(user.id, { email, email_confirm: true })
-    if (error) return Response.json({ error: error.message }, { headers: corsHeaders })
-    const { data: beforeProfile } = await admin.from('profiles').select('id,display_name,username,login_email,role').eq('id', user.id).maybeSingle()
-    const { data: afterProfile, error: profileError } = await admin.from('profiles').update({ login_email: email }).eq('id', user.id).select('id,display_name,username,login_email,role').maybeSingle()
-    if (!profileError) await writeUserAudit('UPDATE', user.id, safeProfile(beforeProfile), safeProfile(afterProfile))
-    return Response.json(profileError ? { error: profileError.message } : { ok: true }, { headers: corsHeaders })
+    return Response.json({ error: 'E-Mail-Änderungen sind nur noch über Kontoeinstellungen mit Bestätigungscode möglich.' }, { status: 400, headers: corsHeaders })
   }
   const { data: callerProfile } = await admin.from('profiles').select('role').eq('id', user.id).maybeSingle()
   const canManageUsers = user.email === ownerEmail || callerProfile?.role === 'management'

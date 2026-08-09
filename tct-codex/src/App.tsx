@@ -182,6 +182,10 @@ const tournamentEntries: Array<{
   categories: TournamentCategory[];
   endsAt: string;
   registrationEnabled: boolean;
+  admission?: string;
+  prizeMoney?: string;
+  venue?: string;
+  mapsUrl?: string;
 }> = [
   {
     date: "27 — 28",
@@ -218,6 +222,10 @@ const tournamentEntries: Array<{
     categories: ["ITF", "Herren"],
     endsAt: "2026-08-16T23:59:59+02:00",
     registrationEnabled: false,
+    admission: "Montag bis Freitag Eintritt frei · Halbfinale und Finale am Samstag und Sonntag kostenpflichtig (Preis noch nicht veröffentlicht)",
+    prizeMoney: "15.000 US-Dollar",
+    venue: "Am Stadion 1, 54292 Trier",
+    mapsUrl: "https://www.google.com/maps/search/?api=1&query=Am+Stadion+1%2C+54292+Trier",
   },
   {
     date: "11 — 13",
@@ -1191,6 +1199,11 @@ function App() {
   const [accountOpen, setAccountOpen] = useState(false);
   const [adminRole, setAdminRole] = useState("");
   const [adminName, setAdminName] = useState("");
+  const [adminUsername, setAdminUsername] = useState("");
+  const [accountNotice, setAccountNotice] = useState("");
+  const [accountBusy, setAccountBusy] = useState(false);
+  const [pendingAccountEmail, setPendingAccountEmail] = useState("");
+  const [showAccountPasswords, setShowAccountPasswords] = useState(false);
   const [tutorialOpen, setTutorialOpen] = useState(false);
   const [tutorialStep, setTutorialStep] = useState(0);
   const [adminEmail, setAdminEmail] = useState<string | null>(null);
@@ -1845,44 +1858,137 @@ function App() {
     setAdminNotice("Passwort sicher geändert.");
   };
 
-  const changeOwnCredentials = async (event: FormEvent<HTMLFormElement>) => {
+  const invokeAccountSettings = async (
+    body: Record<string, unknown>,
+  ): Promise<Record<string, unknown>> => {
+    if (!supabase) return { error: "Supabase ist noch nicht verbunden." };
+    const { data, error } = await supabase.functions.invoke(
+      "account-settings",
+      { body },
+    );
+    if (data?.error) return { error: String(data.error) };
+    if (!error) return data as Record<string, unknown>;
+    try {
+      const context = (error as { context?: Response }).context;
+      const payload = context
+        ? ((await context.clone().json()) as { error?: string })
+        : null;
+      return { error: payload?.error ?? error.message };
+    } catch {
+      return { error: error.message };
+    }
+  };
+
+  const changeOwnName = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    if (!supabase) return;
+    const displayName = String(
+      new FormData(event.currentTarget).get("displayName"),
+    ).trim();
+    setAccountBusy(true);
+    const { data, error } = await supabase.functions.invoke("admin-users", {
+      body: { action: "changeOwnName", displayName },
+    });
+    setAccountBusy(false);
+    if (error || data?.error) {
+      setAccountNotice(data?.error ?? "Name konnte nicht geändert werden.");
+      return;
+    }
+    setAdminName(displayName);
+    setAccountNotice("Dein Name wurde gespeichert.");
+  };
+
+  const changeOwnUsername = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    const username = String(
+      new FormData(event.currentTarget).get("username"),
+    ).trim();
+    setAccountBusy(true);
+    const result = await invokeAccountSettings({
+      action: "changeUsername",
+      username,
+    });
+    setAccountBusy(false);
+    if (result?.error) {
+      setAccountNotice(String(result.error));
+      return;
+    }
+    setAdminUsername(String(result.username ?? username));
+    setAccountNotice("Dein Benutzername wurde geändert.");
+  };
+
+  const requestOwnEmailChange = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    const form = new FormData(event.currentTarget);
+    const newEmail = String(form.get("newEmail")).trim();
+    setAccountBusy(true);
+    const result = await invokeAccountSettings({
+      action: "requestEmailChange",
+      newEmail,
+      currentPassword: String(form.get("currentPassword")),
+    });
+    setAccountBusy(false);
+    if (result?.error) {
+      setAccountNotice(String(result.error));
+      return;
+    }
+    event.currentTarget.reset();
+    setPendingAccountEmail(String(result.newEmail ?? newEmail));
+    setAccountNotice(
+      "Der sechsstellige Code wurde an deine neue E-Mail-Adresse gesendet. Bitte prüfe auch den Spam-Ordner.",
+    );
+  };
+
+  const confirmOwnEmailChange = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    if (!supabase) return;
+    const code = String(new FormData(event.currentTarget).get("code")).trim();
+    setAccountBusy(true);
+    const result = await invokeAccountSettings({
+      action: "confirmEmailChange",
+      code,
+    });
+    setAccountBusy(false);
+    if (result?.error) {
+      setAccountNotice(String(result.error));
+      return;
+    }
+    await supabase.auth.signOut();
+    setPendingAccountEmail("");
+    setAccountOpen(false);
+    setAuthMode("login");
+    setAdminPanel("login");
+    setAdminNotice(
+      "E-Mail-Adresse geändert. Melde dich jetzt mit der neuen Adresse an.",
+    );
+  };
+
+  const changeOwnPassword = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     if (!supabase) return;
     const form = new FormData(event.currentTarget);
-    const displayName = String(form.get("displayName")).trim();
-    const email = String(form.get("email")).trim();
-    const password = String(form.get("password"));
-    if (displayName && displayName !== adminName) {
-      const { data, error } = await supabase.functions.invoke("admin-users", {
-        body: { action: "changeOwnName", displayName },
-      });
-      if (error || data?.error) {
-        setAdminNotice(data?.error ?? "Name konnte nicht geändert werden.");
-        return;
-      }
-      setAdminName(displayName);
+    const newPassword = String(form.get("newPassword"));
+    if (newPassword !== String(form.get("newPasswordRepeat"))) {
+      setAccountNotice("Die neuen Passwörter stimmen nicht überein.");
+      return;
     }
-    if (password) {
-      const { error } = await supabase.auth.updateUser({ password });
-      if (error) {
-        setAdminNotice(
-          `Passwort konnte nicht geändert werden: ${error.message}`,
-        );
-        return;
-      }
+    setAccountBusy(true);
+    const result = await invokeAccountSettings({
+      action: "changePassword",
+      currentPassword: String(form.get("currentPassword")),
+      newPassword,
+    });
+    setAccountBusy(false);
+    if (result?.error) {
+      setAccountNotice(String(result.error));
+      return;
     }
-    if (email && email !== adminEmail) {
-      const { data, error } = await supabase.functions.invoke("admin-users", {
-        body: { action: "changeOwnEmail", email },
-      });
-      if (error || data?.error) {
-        setAdminNotice(data?.error ?? "E-Mail konnte nicht geändert werden.");
-        return;
-      }
-      setAdminEmail(email);
-    }
+    event.currentTarget.reset();
+    await supabase.auth.signOut();
     setAccountOpen(false);
-    setAdminNotice("Deine Zugangsdaten wurden aktualisiert.");
+    setAuthMode("login");
+    setAdminPanel("login");
+    setAdminNotice("Passwort geändert. Bitte melde dich erneut an.");
   };
 
   const signOutAccount = async () => {
@@ -1893,6 +1999,8 @@ function App() {
       return;
     }
     setAccountOpen(false);
+    setPendingAccountEmail("");
+    setAccountNotice("");
     setAdminEditor(null);
     setAdminPanel(null);
     setAdminNotice("Du wurdest abgemeldet.");
@@ -1988,7 +2096,7 @@ function App() {
     if (!supabase) return false;
     const { data: profile, error } = await supabase
       .from("profiles")
-      .select("role,display_name,must_change_password,tutorial_completed,email_verified")
+      .select("role,display_name,username,login_email,must_change_password,tutorial_completed,email_verified")
       .eq("id", userId)
       .maybeSingle();
     if (error || !profile) {
@@ -2014,9 +2122,10 @@ function App() {
       profile.email_verified = true;
     }
     setAdminUserId(userId);
-    setAdminEmail(userEmail);
+    setAdminEmail(profile.login_email ?? userEmail);
     setAdminRole(profile.role);
     setAdminName(profile.display_name ?? "");
+    setAdminUsername(profile.username ?? "");
     setMustChangePassword(Boolean(profile.must_change_password));
     setTutorialOpen(
       editorialRoles.includes(profile.role) && !profile.tutorial_completed,
@@ -2059,6 +2168,9 @@ function App() {
       setAdminEmail(null);
       setAdminRole("");
       setAdminName("");
+      setAdminUsername("");
+      setPendingAccountEmail("");
+      setAccountNotice("");
       setAccountOpen(false);
       setAdminPanel(null);
     });
@@ -2951,9 +3063,14 @@ function App() {
                   <span>
                     <CalendarDays size={17} /> {featuredContent.date}
                   </span>
-                  <span>
-                    <MapPin size={17} /> Am Moselstadion
-                  </span>
+                  <a
+                    href="https://www.google.com/maps/search/?api=1&query=Am+Stadion+1%2C+54292+Trier"
+                    target="_blank"
+                    rel="noreferrer"
+                    aria-label="Tennisclub Trier in Google Maps öffnen"
+                  >
+                    <MapPin size={17} /> Am Stadion 1, 54292 Trier
+                  </a>
                 </div>
                 <a className="circle-link" href={featuredContent.href}>
                   {featuredContent.kind === "event"
@@ -3370,7 +3487,7 @@ function App() {
               {shownTournaments.length ? (
                 shownTournaments.map((event) => {
                   const ended = tournamentIsEnded(event);
-                  const content = <><span className="date">{event.date} <small>{event.month}</small></span><div><p className="kicker">{ended ? "BEENDET" : event.kicker}</p><h3>{event.title}</h3></div></>;
+                  const content = <><span className="date">{event.date} <small>{event.month}</small></span><div><p className="kicker">{ended ? "BEENDET" : event.kicker}</p><h3>{event.title}</h3>{event.admission && !ended && <p className="tournament-entry-price">Mo–Fr Eintritt frei · Wochenende kostenpflichtig</p>}</div></>;
                   return ended ? <article className="tournament-entry is-ended" key={event.title}>{content}<span className="tournament-ended-label">Abgeschlossen</span></article> : <button className="tournament-entry" type="button" key={event.title} onClick={() => setSelectedTournament(event)}>{content}<ArrowRight size={22} /></button>;
                 })
               ) : (
@@ -3422,6 +3539,23 @@ function App() {
               <p className="tournament-detail-date">{selectedTournament.date} {selectedTournament.month} 2026</p>
               <h2>{selectedTournament.title}</h2>
               <p>{selectedTournament.registrationEnabled ? "Fragen stellen oder direkt für das Turnier anmelden – die Turnierleitung erhält deine Anfrage getrennt vom normalen Kontakt-Postfach." : "Fragen zur Veranstaltung gehen direkt an die zuständige Turnierleitung. Eine Anmeldung über die Website ist für dieses Turnier nicht freigeschaltet."}</p>
+              {(selectedTournament.admission || selectedTournament.prizeMoney || selectedTournament.venue) && (
+                <div className="tournament-detail-facts">
+                  {selectedTournament.admission && (
+                    <div><small>EINTRITT</small><strong>{selectedTournament.admission}</strong></div>
+                  )}
+                  {selectedTournament.prizeMoney && (
+                    <div><small>PREISGELD</small><strong>{selectedTournament.prizeMoney}</strong></div>
+                  )}
+                  {selectedTournament.venue && selectedTournament.mapsUrl && (
+                    <a href={selectedTournament.mapsUrl} target="_blank" rel="noreferrer">
+                      <MapPin size={18} />
+                      <span><small>AUSTRAGUNGSORT · GOOGLE MAPS</small><strong>{selectedTournament.venue}</strong></span>
+                      <ArrowRight size={18} />
+                    </a>
+                  )}
+                </div>
+              )}
               <a className="button button-light" href={`/turnier-anmeldung?turnier=${encodeURIComponent(selectedTournament.title)}&anmeldung=${selectedTournament.registrationEnabled ? "1" : "0"}`} onClick={() => setSelectedTournament(null)}>{selectedTournament.registrationEnabled ? "Frage / Anmeldung" : "Frage zum Turnier"} <ArrowRight size={17} /></a>
             </article>
           </div>
@@ -6077,55 +6211,184 @@ function App() {
               <span /> Mein Zugang
             </p>
             <h2>
-              Deine
+              Konto
               <br />
-              <em>Daten.</em>
+              <em>Einstellungen.</em>
             </h2>
             <p className="editor-help">
-              Du kannst deine Anmelde-E-Mail und dein Passwort jederzeit selbst
-              ändern. Nach einer E-Mail-Änderung bitte erneut anmelden.
+              Hier verwaltest du deinen Namen, deinen Benutzernamen, deine
+              Anmelde-E-Mail und dein Passwort. Sicherheitsänderungen werden
+              zusätzlich bestätigt.
             </p>
-            <form onSubmit={changeOwnCredentials}>
-              <label>
-                Name
-                <input
-                  required
-                  name="displayName"
-                  minLength={2}
-                  maxLength={100}
-                  defaultValue={adminName}
-                />
-              </label>
-              <label>
-                E-Mail
-                <input
-                  required
-                  name="email"
-                  type="email"
-                  defaultValue={adminEmail ?? ""}
-                />
-              </label>
-              <label>
-                Neues Passwort{" "}
-                <small>leer lassen, wenn es unverändert bleibt</small>
-                <input
-                  name="password"
-                  type="password"
-                  minLength={10}
-                  autoComplete="new-password"
-                />
-              </label>
-              <button className="button button-light" type="submit">
-                Zugang aktualisieren <Check size={17} />
-              </button>
+            <div className="account-summary">
+              <span>{roleLabels[adminRole] ?? "Mitglied"}</span>
+              <strong>{adminName || "TCT-Mitglied"}</strong>
+              <small>@{adminUsername || "kein-benutzername"} · {adminEmail?.endsWith("@tct-intern.invalid") ? "Noch keine persönliche E-Mail" : adminEmail}</small>
+            </div>
+            {accountNotice && (
+              <p className="account-notice" role="status">{accountNotice}</p>
+            )}
+
+            <section className="account-setting-section">
+              <div>
+                <span>01</span>
+                <h3>Persönliche Angaben</h3>
+                <p>So wirst du im Mitgliederbereich angezeigt.</p>
+              </div>
+              <form onSubmit={changeOwnName}>
+                <label>
+                  Name
+                  <input
+                    required
+                    name="displayName"
+                    minLength={2}
+                    maxLength={100}
+                    defaultValue={adminName}
+                  />
+                </label>
+                <button className="account-save" type="submit" disabled={accountBusy}>
+                  Name speichern <Check size={16} />
+                </button>
+              </form>
+            </section>
+
+            <section className="account-setting-section">
+              <div>
+                <span>02</span>
+                <h3>Benutzername</h3>
+                <p>Damit kannst du dich alternativ zur E-Mail anmelden.</p>
+              </div>
+              <form onSubmit={changeOwnUsername} key={adminUsername}>
+                <label>
+                  Benutzername
+                  <input
+                    required
+                    name="username"
+                    minLength={3}
+                    maxLength={32}
+                    pattern="[A-Za-z0-9._-]{3,32}"
+                    autoComplete="username"
+                    defaultValue={adminUsername}
+                    placeholder="z. B. m.mustermann"
+                  />
+                </label>
+                <button className="account-save" type="submit" disabled={accountBusy}>
+                  Benutzername ändern <Check size={16} />
+                </button>
+              </form>
+            </section>
+
+            <section className="account-setting-section account-security-section">
+              <div>
+                <span>03</span>
+                <h3>E-Mail-Adresse</h3>
+                <p>Die neue Adresse wird erst nach Eingabe des Codes übernommen.</p>
+              </div>
+              {!pendingAccountEmail ? (
+                <form onSubmit={requestOwnEmailChange}>
+                  <label>
+                    Neue E-Mail-Adresse
+                    <input
+                      required
+                      name="newEmail"
+                      type="email"
+                      autoComplete="email"
+                      defaultValue={adminEmail?.endsWith("@tct-intern.invalid") ? "" : adminEmail ?? ""}
+                    />
+                  </label>
+                  <label>
+                    Aktuelles Passwort
+                    <input
+                      required
+                      name="currentPassword"
+                      type={showAccountPasswords ? "text" : "password"}
+                      autoComplete="current-password"
+                    />
+                  </label>
+                  <button className="account-save" type="submit" disabled={accountBusy}>
+                    Bestätigungscode senden <Mail size={16} />
+                  </button>
+                </form>
+              ) : (
+                <form onSubmit={confirmOwnEmailChange} className="account-code-form">
+                  <p>Code gesendet an <strong>{pendingAccountEmail}</strong></p>
+                  <label>
+                    Sechsstelliger Code
+                    <input
+                      required
+                      autoFocus
+                      name="code"
+                      inputMode="numeric"
+                      pattern="\d{6}"
+                      maxLength={6}
+                      placeholder="123456"
+                    />
+                  </label>
+                  <button className="account-save" type="submit" disabled={accountBusy}>
+                    E-Mail bestätigen <Check size={16} />
+                  </button>
+                  <button className="account-cancel" type="button" onClick={() => { setPendingAccountEmail(""); setAccountNotice(""); }}>
+                    Andere E-Mail verwenden
+                  </button>
+                </form>
+              )}
+            </section>
+
+            <section className="account-setting-section account-security-section">
+              <div>
+                <span>04</span>
+                <h3>Passwort</h3>
+                <p>Nach der Änderung meldest du dich mit dem neuen Passwort erneut an.</p>
+              </div>
+              <form onSubmit={changeOwnPassword}>
+                <label>
+                  Aktuelles Passwort
+                  <input
+                    required
+                    name="currentPassword"
+                    type={showAccountPasswords ? "text" : "password"}
+                    autoComplete="current-password"
+                  />
+                </label>
+                <label>
+                  Neues Passwort <small>mindestens 10 Zeichen</small>
+                  <input
+                    required
+                    name="newPassword"
+                    type={showAccountPasswords ? "text" : "password"}
+                    minLength={10}
+                    autoComplete="new-password"
+                  />
+                </label>
+                <label>
+                  Neues Passwort wiederholen
+                  <input
+                    required
+                    name="newPasswordRepeat"
+                    type={showAccountPasswords ? "text" : "password"}
+                    minLength={10}
+                    autoComplete="new-password"
+                  />
+                </label>
+                <button className="account-password-toggle" type="button" onClick={() => setShowAccountPasswords((visible) => !visible)}>
+                  {showAccountPasswords ? <EyeOff size={16} /> : <Eye size={16} />}
+                  {showAccountPasswords ? "Passwörter verbergen" : "Passwörter anzeigen"}
+                </button>
+                <button className="account-save account-save-danger" type="submit" disabled={accountBusy}>
+                  Passwort ändern <LockKeyhole size={16} />
+                </button>
+              </form>
+            </section>
+
+            <div className="account-footer-actions">
               <button
                 className="auth-switch"
                 type="button"
                 onClick={() => void signOutAccount()}
               >
-                Abmelden
+                Abmelden <MoveRight size={16} />
               </button>
-            </form>
+            </div>
           </div>
         </div>
       )}
