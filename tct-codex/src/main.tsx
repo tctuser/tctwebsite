@@ -33,6 +33,8 @@ import "./booking-overrides.css";
 import "./booking-admin.css";
 import "./padel-booking.css";
 import "./booking-route.css";
+import "./tournament-contact.css";
+import "./site-pages.css";
 import "./motion-plus.css";
 import App from "./App";
 

@@ -1,5 +1,6 @@
 import { useEffect, useState, type FormEvent } from "react";
 import {
+  ArrowLeft,
   ArrowDownRight,
   ArrowRight,
   CalendarDays,
@@ -43,11 +44,11 @@ import { BookingPortal } from "./BookingPortal";
 import { BookingAdmin } from "./BookingAdmin";
 
 const navLinks = [
-  ["Club", "#verein"],
-  ["Anlage", "#anlage"],
+  ["Club", "/club"],
+  ["Anlage", "/anlage"],
   ["Buchen", "/booking"],
-  ["Teams", "#mannschaften"],
-  ["Turniere", "#turniere"],
+  ["Teams", "/teams"],
+  ["Turniere", "/turniere"],
 ];
 
 type PriceItem = { name: string; price: string; monthly: string };
@@ -67,6 +68,16 @@ type ContactMessage = {
   id: string;
   name: string;
   email: string;
+  message: string | null;
+  status: "new" | "read" | "archived";
+  created_at: string;
+};
+type TournamentInquiry = {
+  id: string;
+  name: string;
+  email: string;
+  tournament_title: string;
+  inquiry_type: "question" | "registration";
   message: string | null;
   status: "new" | "read" | "archived";
   created_at: string;
@@ -97,6 +108,7 @@ type PublicEvent = {
   description: string | null;
   starts_at: string | null;
   ends_at: string | null;
+  registration_enabled: boolean;
 };
 type MediaFile = { name: string; created_at: string | null };
 type AdminEditor =
@@ -111,6 +123,7 @@ type AdminEditor =
   | "assistant"
   | "booking"
   | "inbox"
+  | "tournamentInbox"
   | "users"
   | null;
 type TeamGroup = { name: string; number: string; text: string; note: string };
@@ -149,6 +162,8 @@ const tournamentEntries: Array<{
   kicker: string;
   title: string;
   categories: TournamentCategory[];
+  endsAt: string;
+  registrationEnabled: boolean;
 }> = [
   {
     date: "27 — 28",
@@ -156,6 +171,8 @@ const tournamentEntries: Array<{
     kicker: "JUGEND · LK TURNIER",
     title: "Jugend LK Turnier U9 — U18",
     categories: ["Jugend", "LK"],
+    endsAt: "2026-06-28T23:59:59+02:00",
+    registrationEnabled: true,
   },
   {
     date: "04",
@@ -163,6 +180,8 @@ const tournamentEntries: Array<{
     kicker: "CLUB EVENT",
     title: "2. Schorle Cup",
     categories: [],
+    endsAt: "2026-07-04T23:59:59+02:00",
+    registrationEnabled: false,
   },
   {
     date: "16 — 19",
@@ -170,6 +189,8 @@ const tournamentEntries: Array<{
     kicker: "DTB HERREN A7",
     title: "1. Trier Wildcard Turnier",
     categories: ["Herren"],
+    endsAt: "2026-07-19T23:59:59+02:00",
+    registrationEnabled: false,
   },
   {
     date: "10 — 16",
@@ -177,6 +198,8 @@ const tournamentEntries: Array<{
     kicker: "ITF WORLD TENNIS TOUR · HERREN",
     title: "Etges & Dächert Open Trier",
     categories: ["ITF", "Herren"],
+    endsAt: "2026-08-16T23:59:59+02:00",
+    registrationEnabled: false,
   },
   {
     date: "11 — 13",
@@ -184,6 +207,8 @@ const tournamentEntries: Array<{
     kicker: "JUGEND · LK TURNIER",
     title: "TCT Jugend Tennis Turnier",
     categories: ["Jugend", "LK"],
+    endsAt: "2026-09-13T23:59:59+02:00",
+    registrationEnabled: true,
   },
   {
     date: "18 — 22",
@@ -191,6 +216,8 @@ const tournamentEntries: Array<{
     kicker: "DAMEN & HERREN · LK TURNIER",
     title: "Damen & Herren LK-Turnier",
     categories: ["Damen", "Herren", "LK"],
+    endsAt: "2026-09-22T23:59:59+02:00",
+    registrationEnabled: true,
   },
 ];
 const defaultFeaturedContent: FeaturedContent = {
@@ -198,45 +225,45 @@ const defaultFeaturedContent: FeaturedContent = {
   title: "Etges & Dächert Open.",
   kicker: "ITF WORLD TENNIS TOUR · HERREN",
   text: "Das internationale Weltranglistenturnier kehrt zum 40. Mal an das Moselstadion zurück. Eine Woche Tennis auf hohem Niveau, direkt in Trier.",
-  image: "/assets/tct/images/turnier-itf.jpg",
+  image: "/assets/tct/images/turnier-itf-2026.png",
   date: "10. – 16. August 2026",
-  href: "#turniere",
+  href: "/turniere",
 };
 const siteSearchIndex = [
   {
     title: "Der Verein",
     description: "Vorstand, Geschichte und Clubleben",
-    href: "#verein",
+    href: "/club",
   },
   {
     title: "Anlage",
     description: "Außenplätze, Halle, Padel und La Palma",
-    href: "#anlage",
+    href: "/anlage",
   },
   {
     title: "Mannschaften",
     description: "Herren, Damen und Jugend",
-    href: "#mannschaften",
+    href: "/teams",
   },
   {
     title: "Turniere",
     description: "ITF, Herren, Damen, Jugend und LK",
-    href: "#turniere",
+    href: "/turniere",
   },
   {
     title: "Mitgliedschaft",
     description: "Beiträge und Mitglied werden",
-    href: "#mitgliedschaft",
+    href: "/mitglied-werden",
   },
   {
     title: "Downloads",
     description: "Aufnahmeantrag und Hallenpreise",
-    href: "#downloads",
+    href: "/service",
   },
   {
     title: "Kontakt",
     description: "Adresse, E-Mail und Telefon",
-    href: "#kontakt",
+    href: "/kontakt",
   },
 ];
 
@@ -695,6 +722,7 @@ function FocusManager({
   featured,
   choose,
   clear,
+  moveToNews,
   createNews,
   createEvent,
 }: {
@@ -705,6 +733,7 @@ function FocusManager({
   featured: FeaturedContent;
   choose: (item: FeaturedContent) => void;
   clear: () => void;
+  moveToNews: () => void;
   createNews: () => void;
   createEvent: () => void;
 }) {
@@ -756,6 +785,9 @@ function FocusManager({
             <button type="button" onClick={clear}>
               Fokus entfernen
             </button>
+            <button type="button" onClick={moveToNews}>
+              Als News behalten
+            </button>
           </div>
         </header>
         <div className="focus-current">
@@ -791,7 +823,7 @@ function FocusManager({
                           dateStyle: "long",
                         }).format(new Date(item.published_at))
                       : "Aktuell",
-                    href: "#aktuell",
+                    href: "/news",
                   })
                 }
               >
@@ -819,7 +851,7 @@ function FocusManager({
                       "Alle Informationen zum Termin im Tennisclub Trier.",
                     image: "/assets/tct/images/turnier-itf.jpg",
                     date: eventDate(item),
-                    href: "#turniere",
+                    href: "/turniere",
                   })
                 }
               >
@@ -1022,7 +1054,27 @@ function ClubAssistant({
 }
 
 function App() {
-  const isBookingPage = window.location.pathname.replace(/\/+$/, "") === "/booking";
+  const currentPath = window.location.pathname.replace(/\/+$/, "");
+  const isHomePage = currentPath === "" || currentPath === "/";
+  const isBookingPage = currentPath === "/booking";
+  const isTournamentContactPage = currentPath === "/turnier-anmeldung";
+  const sectionPage = ["club", "anlage", "teams", "turniere", "news", "mitglied-werden", "service", "kontakt"].find(
+    (page) => currentPath === `/${page}`,
+  );
+  const sectionPageInfo: Record<string, { eyebrow: string; title: string; accent: string; text: string }> = {
+    club: { eyebrow: "Tennisclub Trier 1888 e.V.", title: "Der", accent: "Club.", text: "Tradition, Menschen und das Clubleben am Moselstadion." },
+    anlage: { eyebrow: "Am Moselstadion", title: "Unsere", accent: "Anlage.", text: "Tennis, Padel, Halle und Gastronomie an einem Ort." },
+    teams: { eyebrow: "Gemeinsam antreten", title: "Unsere", accent: "Teams.", text: "Damen, Herren und Jugend – alle Mannschaften des TCT." },
+    turniere: { eyebrow: "Tennis in Trier", title: "Unsere", accent: "Turniere.", text: "Aktuelle Termine, Turnierdetails und direkte Fragen an die Turnierleitung." },
+    news: { eyebrow: "Was den Club bewegt", title: "TCT", accent: "News.", text: "Aktuelles, Rückblicke und das komplette Vereinsarchiv." },
+    "mitglied-werden": { eyebrow: "Willkommen im TCT", title: "Mitglied", accent: "werden.", text: "Beiträge ansehen, Unterlagen öffnen und den ersten Schritt in den Club machen." },
+    service: { eyebrow: "Alles auf einen Blick", title: "TCT", accent: "Service.", text: "Offizielle Unterlagen und wichtige Downloads für den Cluballtag." },
+    kontakt: { eyebrow: "Wir sind für dich da", title: "Sag", accent: "Hallo.", text: "Fragen, Interesse oder ein erstes Kennenlernen – wir freuen uns auf dich." },
+  };
+  const pageInfo = sectionPage ? sectionPageInfo[sectionPage] : null;
+  const isFocusedPage = !isHomePage;
+  const selectedTournamentTitle = new URLSearchParams(window.location.search).get("turnier") ?? "Allgemeine Turnieranfrage";
+  const registrationAllowed = new URLSearchParams(window.location.search).get("anmeldung") !== "0";
   const [menuOpen, setMenuOpen] = useState(false);
   const [searchOpen, setSearchOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
@@ -1078,7 +1130,10 @@ function App() {
   const [liveEvents, setLiveEvents] = useState<PublicEvent[]>([]);
   const [adminEvents, setAdminEvents] = useState<PublicEvent[]>([]);
   const [contactMessages, setContactMessages] = useState<ContactMessage[]>([]);
+  const [tournamentInquiries, setTournamentInquiries] = useState<TournamentInquiry[]>([]);
   const [contactError, setContactError] = useState("");
+  const [tournamentFormError, setTournamentFormError] = useState("");
+  const [tournamentFormSent, setTournamentFormSent] = useState(false);
   const [managedUsers, setManagedUsers] = useState<ManagedUser[]>([]);
   const [mustChangePassword, setMustChangePassword] = useState(false);
   const [accountOpen, setAccountOpen] = useState(false);
@@ -1091,6 +1146,8 @@ function App() {
   const [auditOpen, setAuditOpen] = useState(false);
   const [tournamentFilter, setTournamentFilter] =
     useState<TournamentFilter>("Alle");
+  const [selectedTournament, setSelectedTournament] =
+    useState<(typeof tournamentEntries)[number] | null>(null);
   const [teamGroup, setTeamGroup] = useState(0);
 
   useEffect(() => {
@@ -1248,7 +1305,7 @@ function App() {
           .limit(3),
         client
           .from("events")
-          .select("id,title,category,description,starts_at,ends_at")
+          .select("id,title,category,description,starts_at,ends_at,registration_enabled")
           .eq("status", "published")
           .order("starts_at", { ascending: true })
           .limit(4),
@@ -1309,11 +1366,41 @@ function App() {
     setFormSent(true);
   };
 
+  const submitTournamentInquiry = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    const form = new FormData(event.currentTarget);
+    const name = String(form.get("name") ?? "").trim();
+    const email = String(form.get("email") ?? "").trim();
+    const inquiryType = String(form.get("inquiryType") ?? "question");
+    const message = String(form.get("message") ?? "").trim();
+    setTournamentFormError("");
+    if (!supabase) {
+      setTournamentFormError("Das Turnier-Postfach ist gerade nicht verfügbar. Bitte versuche es später erneut.");
+      return;
+    }
+    const { error } = await supabase.from("tournament_inquiries").insert({
+      name,
+      email,
+      tournament_title: selectedTournamentTitle,
+      inquiry_type: inquiryType,
+      message: message || null,
+    });
+    if (error) {
+      setTournamentFormError("Deine Anfrage konnte gerade nicht gespeichert werden. Bitte schreibe uns direkt per E-Mail.");
+      return;
+    }
+    setTournamentFormSent(true);
+  };
+
   const shownTournaments = tournamentEntries.filter(
     (entry) =>
       tournamentFilter === "Alle" ||
       entry.categories.includes(tournamentFilter),
   );
+  const eventIsEnded = (event: PublicEvent) =>
+    Boolean(event.ends_at && new Date(event.ends_at).getTime() < Date.now());
+  const tournamentIsEnded = (event: (typeof tournamentEntries)[number]) =>
+    new Date(event.endsAt).getTime() < Date.now();
   const searchResults = [
     ...siteSearchIndex,
     ...liveNews.map((news) => ({
@@ -1361,6 +1448,7 @@ function App() {
     "content_manager",
   ].includes(adminRole);
   const canManageInbox = ["management", "admin", "editor"].includes(adminRole);
+  const canManageTournamentInbox = ["management", "admin", "tournament_manager"].includes(adminRole);
   const canManageBooking = ["management", "admin"].includes(adminRole);
   const canManageFocus = ["management", "admin", "editor"].includes(adminRole);
   const traditionYears = new Date().getFullYear() - 1888;
@@ -1515,7 +1603,7 @@ function App() {
     if (!supabase) return;
     const { data } = await supabase
       .from("events")
-      .select("id,title,category,description,starts_at,ends_at")
+      .select("id,title,category,description,starts_at,ends_at,registration_enabled")
       .order("starts_at", { ascending: true })
       .limit(100);
     if (data) setAdminEvents(data);
@@ -1529,6 +1617,16 @@ function App() {
       .order("created_at", { ascending: false })
       .limit(100);
     if (!error && data) setContactMessages(data as ContactMessage[]);
+  };
+
+  const loadTournamentInquiries = async () => {
+    if (!supabase) return;
+    const { data, error } = await supabase
+      .from("tournament_inquiries")
+      .select("id,name,email,tournament_title,inquiry_type,message,status,created_at")
+      .order("created_at", { ascending: false })
+      .limit(100);
+    if (!error && data) setTournamentInquiries(data as TournamentInquiry[]);
   };
 
   const loadManagedUsers = async () => {
@@ -1716,12 +1814,31 @@ function App() {
     );
   };
 
+  const updateTournamentInquiryStatus = async (
+    id: string,
+    status: TournamentInquiry["status"],
+  ) => {
+    if (!supabase) return;
+    const { error } = await supabase
+      .from("tournament_inquiries")
+      .update({ status })
+      .eq("id", id);
+    if (error) return;
+    setTournamentInquiries((items) =>
+      items.map((item) => (item.id === id ? { ...item, status } : item)),
+    );
+  };
+
   useEffect(() => {
     if (adminEditor === "event") void loadAdminEvents();
   }, [adminEditor]);
 
   useEffect(() => {
     if (adminEditor === "inbox") void loadContactMessages();
+  }, [adminEditor]);
+
+  useEffect(() => {
+    if (adminEditor === "tournamentInbox") void loadTournamentInquiries();
   }, [adminEditor]);
 
   useEffect(() => {
@@ -1960,6 +2077,7 @@ function App() {
       description: String(form.get("description")) || null,
       starts_at: startsAt ? new Date(startsAt).toISOString() : null,
       ends_at: endsAt ? new Date(endsAt).toISOString() : null,
+      registration_enabled: form.get("registration_enabled") === "on",
       status: "published",
     });
     if (error) {
@@ -2019,6 +2137,62 @@ function App() {
     }
     setFeaturedContent(defaultFeaturedContent);
     setAdminNotice("Der Fokus wurde zurückgesetzt.");
+  };
+
+  const moveFeaturedToNews = async () => {
+    if (
+      !supabase ||
+      !adminUserId ||
+      !window.confirm(
+        "Den aktuellen Fokus als normale News im Archiv behalten? Anschließend erscheint wieder der Standardfokus auf der Startseite.",
+      )
+    )
+      return;
+
+    const alreadyNews =
+      featuredContent.kind === "news" &&
+      adminNews.some(
+        (item) =>
+          item.title.trim().toLocaleLowerCase("de-DE") ===
+          featuredContent.title.trim().toLocaleLowerCase("de-DE"),
+      );
+
+    if (!alreadyNews) {
+      const { error: newsError } = await supabase.from("news").insert({
+        title: featuredContent.title,
+        excerpt: featuredContent.text || null,
+        body: featuredContent.text || null,
+        image_path: featuredContent.image || null,
+        status: "published",
+        published_at: new Date().toISOString(),
+      });
+      if (newsError) {
+        setAdminNotice(
+          `Fokus konnte nicht als News gespeichert werden: ${newsError.message}`,
+        );
+        return;
+      }
+    }
+
+    const { error: focusError } = await supabase.from("club_content").upsert({
+      key: "featured_content",
+      value: { item: defaultFeaturedContent },
+      updated_by: adminUserId,
+    });
+    if (focusError) {
+      setAdminNotice(
+        `News wurde gespeichert, aber der Fokus konnte nicht entfernt werden: ${focusError.message}`,
+      );
+      return;
+    }
+    setFeaturedContent(defaultFeaturedContent);
+    setAdminNotice(
+      alreadyNews
+        ? "Die News bleibt im Archiv. Der Fokus wurde aufgehoben."
+        : "Der Fokus wurde als normale News archiviert und von der Startseite genommen.",
+    );
+    await loadAdminNews();
+    await loadNewsArchive();
   };
 
   const saveMembership = async (event: FormEvent<HTMLFormElement>) => {
@@ -2327,7 +2501,7 @@ function App() {
   };
 
   return (
-    <main className={isBookingPage ? "booking-page" : ""}>
+    <main className={`${isBookingPage ? "booking-page" : isTournamentContactPage ? "tournament-contact-page" : ""} ${sectionPage ? "section-page" : ""}`}>
       <NewsManager
         open={adminEditor === "news"}
         close={() => setAdminEditor(null)}
@@ -2363,6 +2537,7 @@ function App() {
         featured={featuredContent}
         choose={(item) => void saveFeaturedContent(item)}
         clear={() => void clearFeaturedContent()}
+        moveToNews={() => void moveFeaturedToNews()}
         createNews={() => {
           setEditingNews(null);
           setUploadPath("");
@@ -2385,14 +2560,14 @@ function App() {
       <header className={`site-header ${scrolled ? "is-scrolled" : ""}`}>
         <a
           className="brand logo-brand"
-          href={isBookingPage ? "/" : "#top"}
+          href={isFocusedPage ? "/" : "#top"}
           aria-label="TCT 1888 Startseite"
         >
           <img src={liveSiteImages.logo} alt="TCT 1888" />
         </a>
         <nav className="desktop-nav" aria-label="Hauptnavigation">
           {navLinks.map(([label, href]) => (
-            <a key={href} href={isBookingPage && href.startsWith("#") ? `/${href}` : href}>
+            <a key={href} href={isFocusedPage && href.startsWith("#") ? `/${href}` : href}>
               {label}
             </a>
           ))}
@@ -2451,6 +2626,16 @@ function App() {
         </div>
       </header>
 
+      {pageInfo && (
+        <section className="section-page-hero" aria-labelledby="section-page-title">
+          <div className="container">
+            <p className="eyebrow"><span /> {pageInfo.eyebrow}</p>
+            <h1 id="section-page-title">{pageInfo.title}<br /><em>{pageInfo.accent}</em></h1>
+            <p>{pageInfo.text}</p>
+          </div>
+        </section>
+      )}
+
       <section className="hero" id="top" aria-labelledby="hero-title">
         <img
           className="hero-image"
@@ -2473,10 +2658,10 @@ function App() {
               besondere Anlage am Moselstadion.
             </p>
             <div className="hero-ctas">
-              <a className="button button-light" href="#mitgliedschaft">
+              <a className="button button-light" href="/mitglied-werden">
                 Mitglied werden <ArrowRight size={18} />
               </a>
-              <a className="button button-outline hero-discover" href="#verein">
+              <a className="button button-outline hero-discover" href="/club">
                 Entdecke den Club <ArrowRight size={18} />
               </a>
             </div>
@@ -2527,14 +2712,14 @@ function App() {
         </div>
       </section>
 
-      <div id="content">
-        <section className="section current" id="aktuell">
+      <div id="content" className={`content-route ${isHomePage ? "route-home" : sectionPage ? `route-${sectionPage}` : ""}`}>
+        <section className="section current route-home" id="aktuell">
           <div className="container">
             <div className="section-head">
               <p className="eyebrow">
                 <span /> Im Fokus
               </p>
-              <a className="text-link" href="#turniere">
+              <a className="text-link" href="/turniere">
                 Alle Termine <ArrowRight size={17} />
               </a>
             </div>
@@ -2567,7 +2752,7 @@ function App() {
           </div>
         </section>
 
-        <section className="section club-intro" id="verein">
+        <section className="section club-intro route-club" id="verein">
           <div className="container intro-grid motion">
             <p className="eyebrow">
               <span /> Der Club
@@ -2593,7 +2778,7 @@ function App() {
                 </div>
                 <small>Gemeinsam<br />auf dem Platz</small>
               </div>
-              <a className="text-link" href="#geschichte">
+              <a className="text-link" href="/club#geschichte">
                 Unsere Geschichte <ArrowRight size={17} />
               </a>
             </div>
@@ -2605,7 +2790,7 @@ function App() {
           </div>
         </section>
 
-        <section className="quick-links" aria-labelledby="quick-links-title">
+        <section className="quick-links route-home" aria-labelledby="quick-links-title">
           <div className="container">
             <div className="quick-links-heading">
               <p className="eyebrow">
@@ -2614,7 +2799,7 @@ function App() {
               <h2 id="quick-links-title">Was möchtest du machen?</h2>
             </div>
             <div className="quick-links-grid">
-              <a href="#mitgliedschaft">
+              <a href="/mitglied-werden">
                 <span>01</span>
                 <div>
                   <h3>Mitglied werden</h3>
@@ -2630,7 +2815,7 @@ function App() {
                 </div>
                 <ArrowRight size={20} />
               </a>
-              <a href="#mannschaften">
+              <a href="/teams">
                 <span>03</span>
                 <div>
                   <h3>Teams entdecken</h3>
@@ -2638,7 +2823,7 @@ function App() {
                 </div>
                 <ArrowRight size={20} />
               </a>
-              <a href="#kontakt">
+              <a href="/kontakt">
                 <span>04</span>
                 <div>
                   <h3>Kontakt aufnehmen</h3>
@@ -2650,7 +2835,7 @@ function App() {
           </div>
         </section>
 
-        <section className="section facilities" id="anlage">
+        <section className="section facilities route-home route-anlage" id="anlage">
           <div className="container">
             <div className="section-head inverse">
               <p className="eyebrow">
@@ -2702,7 +2887,7 @@ function App() {
           />
         )}
 
-        <section className="section experience-section">
+        <section className="section experience-section route-anlage">
           <div className="container">
             <div className="section-head">
               <p className="eyebrow">
@@ -2736,7 +2921,7 @@ function App() {
           </div>
         </section>
 
-        <section className="section teams-section" id="mannschaften">
+        <section className="section teams-section route-teams" id="mannschaften">
           <div className="container">
             <div className="section-head">
               <p className="eyebrow">
@@ -2823,7 +3008,7 @@ function App() {
           </div>
         </section>
 
-        <section className="section official-teams-section">
+        <section className="section official-teams-section route-teams">
           <div className="container official-teams-card motion">
             <div>
               <p className="eyebrow">
@@ -2851,7 +3036,7 @@ function App() {
           </div>
         </section>
 
-        <section className="section timeline" id="geschichte">
+        <section className="section timeline route-club" id="geschichte">
           <div className="container">
             <div className="section-head">
               <p className="eyebrow">
@@ -2890,7 +3075,7 @@ function App() {
           </div>
         </section>
 
-        <section className="section school motion">
+        <section className="section school motion route-home route-anlage">
           <div className="school-image">
             <img src={liveSiteImages.school} alt="Kinder beim Tennistraining" />
           </div>
@@ -2919,7 +3104,7 @@ function App() {
           </div>
         </section>
 
-        <section className="section tournaments" id="turniere">
+        <section className="section tournaments route-turniere" id="turniere">
           <div className="container">
             <div className="section-head">
               <p className="eyebrow">
@@ -2956,18 +3141,11 @@ function App() {
             </div>
             <div className="tournament-list motion">
               {shownTournaments.length ? (
-                shownTournaments.map((event) => (
-                  <article key={event.title}>
-                    <span className="date">
-                      {event.date} <small>{event.month}</small>
-                    </span>
-                    <div>
-                      <p className="kicker">{event.kicker}</p>
-                      <h3>{event.title}</h3>
-                    </div>
-                    <ArrowRight size={22} />
-                  </article>
-                ))
+                shownTournaments.map((event) => {
+                  const ended = tournamentIsEnded(event);
+                  const content = <><span className="date">{event.date} <small>{event.month}</small></span><div><p className="kicker">{ended ? "BEENDET" : event.kicker}</p><h3>{event.title}</h3></div></>;
+                  return ended ? <article className="tournament-entry is-ended" key={event.title}>{content}<span className="tournament-ended-label">Abgeschlossen</span></article> : <button className="tournament-entry" type="button" key={event.title} onClick={() => setSelectedTournament(event)}>{content}<ArrowRight size={22} /></button>;
+                })
               ) : (
                 <p className="tournament-empty">
                   Für diese Kategorie sind aktuell keine bestätigten Termine
@@ -2977,28 +3155,53 @@ function App() {
             </div>
             {liveEvents.length > 0 && (
               <div className="live-events">
-                {liveEvents.map((event) => (
-                  <article key={event.id}>
-                    <p className="kicker">{event.category ?? "CLUB TERMIN"}</p>
-                    <h3>{event.title}</h3>
-                    <p>
-                      {event.starts_at
-                        ? new Intl.DateTimeFormat("de-DE", {
-                            dateStyle: "medium",
-                            timeStyle: "short",
-                          }).format(new Date(event.starts_at))
-                        : "Datum folgt"}
-                    </p>
-                    {event.description && <span>{event.description}</span>}
-                  </article>
-                ))}
+                {liveEvents.map((event) => {
+                  const ended = eventIsEnded(event);
+                  const content = <><p className="kicker">{ended ? "BEENDET" : event.category ?? "CLUB TERMIN"}</p><h3>{event.title}</h3><p>{event.starts_at ? new Intl.DateTimeFormat("de-DE", { dateStyle: "medium", timeStyle: "short" }).format(new Date(event.starts_at)) : "Datum folgt"}</p>{event.description && <span>{event.description}</span>}{!ended && <b>{event.registration_enabled ? "Frage / Anmeldung" : "Frage zum Turnier"} <ArrowRight size={16} /></b>}</>;
+                  return ended ? <article className="is-ended" key={event.id}>{content}</article> : <a className="live-event-link" key={event.id} href={`/turnier-anmeldung?turnier=${encodeURIComponent(event.title)}&anmeldung=${event.registration_enabled ? "1" : "0"}`}>{content}</a>;
+                })}
               </div>
             )}
           </div>
         </section>
 
+        <section className="section tournament-contact-section" id="turnier-anmeldung">
+          <div className="container tournament-contact-grid">
+            <div>
+              <p className="eyebrow"><span /> Turnier-Service</p>
+              <h1>Fragen.<br /><em>Anmelden.</em></h1>
+              <p className="tournament-contact-lead">Für <strong>{selectedTournamentTitle}</strong>. Deine Nachricht geht direkt an die zuständige Turnierleitung.</p>
+              <a className="text-link" href="/#turniere">Zur Turnierübersicht <ArrowLeft size={17} /></a>
+            </div>
+            <form className="tournament-contact-form" onSubmit={submitTournamentInquiry}>
+              {tournamentFormSent ? <div className="tournament-contact-success"><Check size={30} /><h2>Gesendet.</h2><p>Danke! Die Turnierleitung meldet sich bei dir per E-Mail.</p></div> : <>
+                <p className="kicker">DEINE ANFRAGE</p>
+                <label>Anliegen<select name="inquiryType" defaultValue="question"><option value="question">Frage zum Turnier</option>{registrationAllowed && <option value="registration">Anmeldung / Teilnahme</option>}</select></label>
+                <label>Name<input required name="name" minLength={2} maxLength={120} autoComplete="name" placeholder="Vor- und Nachname" /></label>
+                <label>E-Mail<input required name="email" type="email" autoComplete="email" placeholder="name@beispiel.de" /></label>
+                <label>Nachricht <small>{registrationAllowed ? "optional bei einer Anmeldung" : "Die Turnierleitung meldet sich bei dir."}</small><textarea name="message" rows={5} maxLength={4000} placeholder={registrationAllowed ? "Frage, Altersklasse, LK oder weitere Hinweise …" : "Deine Frage zum Turnier …"} /></label>
+                {tournamentFormError && <p className="form-error">{tournamentFormError}</p>}
+                <button className="button button-light" type="submit">Anfrage senden <ArrowRight size={17} /></button>
+              </>}
+            </form>
+          </div>
+        </section>
+
+        {selectedTournament && (
+          <div className="tournament-detail-backdrop" role="dialog" aria-modal="true" aria-label="Turnierdetails">
+            <article className="tournament-detail-card">
+              <button className="admin-close" onClick={() => setSelectedTournament(null)} aria-label="Turnierdetails schließen"><X size={23} /></button>
+              <p className="eyebrow"><span /> {selectedTournament.kicker}</p>
+              <p className="tournament-detail-date">{selectedTournament.date} {selectedTournament.month} 2026</p>
+              <h2>{selectedTournament.title}</h2>
+              <p>{selectedTournament.registrationEnabled ? "Fragen stellen oder direkt für das Turnier anmelden – die Turnierleitung erhält deine Anfrage getrennt vom normalen Kontakt-Postfach." : "Fragen zur Veranstaltung gehen direkt an die zuständige Turnierleitung. Eine Anmeldung über die Website ist für dieses Turnier nicht freigeschaltet."}</p>
+              <a className="button button-light" href={`/turnier-anmeldung?turnier=${encodeURIComponent(selectedTournament.title)}&anmeldung=${selectedTournament.registrationEnabled ? "1" : "0"}`} onClick={() => setSelectedTournament(null)}>{selectedTournament.registrationEnabled ? "Frage / Anmeldung" : "Frage zum Turnier"} <ArrowRight size={17} /></a>
+            </article>
+          </div>
+        )}
+
         {liveNews.length > 0 && (
-          <section className="section news-section">
+          <section className="section news-section route-news">
             <div className="container">
               <div className="section-head">
                 <p className="eyebrow">
@@ -3050,7 +3253,7 @@ function App() {
           </section>
         )}
 
-        <section className="section legacy-news-section" id="news-archiv">
+        <section className="section legacy-news-section route-news" id="news-archiv">
           <div className="container">
             <div className="section-head">
               <p className="eyebrow">
@@ -3100,7 +3303,7 @@ function App() {
           </div>
         </section>
 
-        <section className="section membership" id="mitgliedschaft">
+        <section className="section membership route-mitglied-werden" id="mitgliedschaft">
           <div className="container membership-grid motion">
             <div className="membership-copy">
               <p className="eyebrow">
@@ -3115,8 +3318,8 @@ function App() {
                 Ob erste Schritte auf dem Platz oder sportlicher Anspruch: Im
                 TCT bist du willkommen.
               </p>
-              <a className="button button-light" href="#kontakt">
-                Interesse anmelden <ArrowRight size={18} />
+              <a className="button button-dark membership-contact-cta" href="/kontakt">
+                Kontaktformular ausfüllen <ArrowRight size={18} />
               </a>
             </div>
             <div className="prices">
@@ -3138,7 +3341,7 @@ function App() {
           </div>
         </section>
 
-        <section className="section downloads-section" id="downloads">
+        <section className="section downloads-section route-service" id="downloads">
           <div className="container">
             <div className="section-head">
               <p className="eyebrow">
@@ -3181,13 +3384,13 @@ function App() {
           </div>
         </section>
 
-        <section className="section board-section">
+        <section className="section board-section route-club">
           <div className="container">
             <div className="section-head">
               <p className="eyebrow">
                 <span /> Für den Club
               </p>
-              <a className="text-link" href="#kontakt">
+              <a className="text-link" href="/kontakt">
                 Kontakt aufnehmen <ArrowRight size={17} />
               </a>
             </div>
@@ -3226,7 +3429,7 @@ function App() {
           </div>
         </section>
 
-        <section className="social-section">
+        <section className="social-section route-home">
           <div className="container">
             <p className="eyebrow">
               <span /> TCT Socials
@@ -3257,7 +3460,7 @@ function App() {
           </div>
         </section>
 
-        <section className="section contact" id="kontakt">
+        <section className="section contact route-kontakt" id="kontakt">
           <div className="container contact-grid">
             <div>
               <p className="eyebrow">
@@ -3344,7 +3547,7 @@ function App() {
       <footer className="footer">
         <div className="container">
           <div className="footer-top">
-            <a className="brand logo-brand footer-brand" href="#top">
+            <a className="brand logo-brand footer-brand" href="/">
               <img src={officialImages.logo} alt="TCT 1888" />
             </a>
             <p>
@@ -3352,18 +3555,18 @@ function App() {
               <br />
               Am Moselstadion.
             </p>
-            <a className="footer-round" href="#top" aria-label="Nach oben">
+            <a className="footer-round" href="/" aria-label="Zur Startseite">
               <ArrowRight size={22} />
             </a>
           </div>
           <div className="footer-bottom">
             <span>© {new Date().getFullYear()} Tennisclub Trier 1888 e.V.</span>
             <div>
-              <a href="#kontakt">Impressum</a>
+              <a href="/kontakt">Impressum</a>
               <a href="#datenschutz" onClick={() => setPrivacyOpen(true)}>
                 Datenschutz
               </a>
-              <a href="#downloads">Vereinsunterlagen</a>
+              <a href="/service">Vereinsunterlagen</a>
             </div>
           </div>
         </div>
@@ -3570,7 +3773,7 @@ function App() {
               <span /> Navigation
             </p>
             {navLinks.map(([label, href], i) => (
-              <a href={isBookingPage && href.startsWith("#") ? `/${href}` : href} onClick={() => setMenuOpen(false)} key={href}>
+              <a href={isFocusedPage && href.startsWith("#") ? `/${href}` : href} onClick={() => setMenuOpen(false)} key={href}>
                 <span>0{i + 1}</span>
                 {label}
                 <ArrowRight size={24} />
@@ -4002,6 +4205,19 @@ function App() {
                   <ArrowRight size={18} />
                 </button>
               )}
+              {canManageTournamentInbox && (
+                <button
+                  className="admin-task"
+                  onClick={() => setAdminEditor("tournamentInbox")}
+                >
+                  <CalendarDays size={19} />
+                  <span>
+                    <b>Turnier-Postfach</b>
+                    <small>Fragen und Anmeldungen bearbeiten</small>
+                  </span>
+                  <ArrowRight size={18} />
+                </button>
+              )}
               <button
                 className="admin-task"
                 onClick={() => setAccountOpen(true)}
@@ -4420,6 +4636,7 @@ function App() {
                 Ende
                 <input name="ends_at" type="datetime-local" />
               </label>
+              <label className="event-registration-check"><input name="registration_enabled" type="checkbox" /> Anmeldung über die Website erlauben <small>Aus lassen bei Einladungsturnieren wie dem ITF.</small></label>
               <label>
                 Beschreibung
                 <textarea
@@ -4496,6 +4713,7 @@ function App() {
                     <input name="ends_at" type="datetime-local" />
                   </label>
                 </div>
+                <label className="event-registration-check"><input name="registration_enabled" type="checkbox" /> Anmeldung über die Website erlauben <small>Aus lassen bei Einladungsturnieren wie dem ITF.</small></label>
                 <label>
                   Beschreibung
                   <textarea
@@ -4998,6 +5216,41 @@ function App() {
               ) : (
                 <p className="inbox-empty">Noch keine Anfragen vorhanden.</p>
               )}
+            </div>
+          </div>
+        </div>
+      )}
+      {adminEditor === "tournamentInbox" && canManageTournamentInbox && (
+        <div className="editor-overlay inbox-editor" role="dialog" aria-modal="true" aria-label="Turnier-Postfach">
+          <button className="admin-close" onClick={() => setAdminEditor(null)} aria-label="Turnier-Postfach schließen"><X size={23} /></button>
+          <div className="inbox-card">
+            <div className="inbox-heading">
+              <div>
+                <p className="eyebrow"><span /> Turnier-Postfach</p>
+                <h2>Aufschlag.<br /><em>Im Blick.</em></h2>
+                <p>Hier landen ausschließlich Fragen und Anmeldungen zu Turnieren. Sichtbar für Turnierleitung, Admin und Management.</p>
+              </div>
+              <button type="button" onClick={() => void loadTournamentInquiries()}>Aktualisieren</button>
+            </div>
+            <div className="inbox-list">
+              {tournamentInquiries.length ? tournamentInquiries.map((inquiry) => (
+                <article key={inquiry.id}>
+                  <header>
+                    <div>
+                      <span className={`inbox-status status-${inquiry.status}`}>{inquiry.inquiry_type === "registration" ? "Anmeldung" : "Frage"} · {inquiry.status === "new" ? "Neu" : inquiry.status === "read" ? "Gelesen" : "Archiviert"}</span>
+                      <h3>{inquiry.tournament_title}</h3>
+                      <p><strong>{inquiry.name}</strong> · <a href={`mailto:${inquiry.email}`}>{inquiry.email}</a></p>
+                    </div>
+                    <time>{new Intl.DateTimeFormat("de-DE", { dateStyle: "medium", timeStyle: "short" }).format(new Date(inquiry.created_at))}</time>
+                  </header>
+                  {inquiry.message && <p>{inquiry.message}</p>}
+                  <footer>
+                    <a href={`mailto:${inquiry.email}?subject=${encodeURIComponent(`Deine ${inquiry.inquiry_type === "registration" ? "Anmeldung" : "Frage"} zum ${inquiry.tournament_title}`)}`}>Antworten <ArrowRight size={16} /></a>
+                    {inquiry.status === "new" && <button onClick={() => void updateTournamentInquiryStatus(inquiry.id, "read")}>Als gelesen markieren</button>}
+                    {inquiry.status !== "archived" && <button onClick={() => void updateTournamentInquiryStatus(inquiry.id, "archived")}>Archivieren</button>}
+                  </footer>
+                </article>
+              )) : <p className="inbox-empty">Noch keine Turnieranfragen vorhanden.</p>}
             </div>
           </div>
         </div>

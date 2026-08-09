@@ -27,6 +27,7 @@
 .event-create-form { display: grid; min-width: 0; gap: 14px; padding: 26px; background: #f4f1e8; color: #103326; }
 .event-create-form label { display: grid; min-width: 0; gap: 7px; font-size: .74rem; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; }
 .event-create-form input, .event-create-form textarea, .event-create-form select { width: 100%; min-width: 0; box-sizing: border-box; border: 1px solid #c8cec5; padding: 12px; background: #fffdf7; color: #103326; font: inherit; }
+.event-create-form .event-registration-check{display:block;padding:12px;border:1px solid #c8cec5;background:#fffdf7;text-transform:none;letter-spacing:normal}.event-create-form .event-registration-check input{display:inline-block;width:auto;margin:0 8px 0 0;vertical-align:middle;accent-color:#103326}.event-create-form .event-registration-check small{display:block;margin:7px 0 0;color:#526058;font-size:.72rem;font-weight:600;line-height:1.45}
 .event-create-form textarea { resize: vertical; }
 .event-date-row { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
 .event-create-form .button { justify-content: center; margin-top: 8px; }

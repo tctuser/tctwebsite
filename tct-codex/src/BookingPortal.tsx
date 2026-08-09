@@ -112,14 +112,19 @@ export function BookingPortal({
       setMyBookings([]);
       return;
     }
-    const { data } = await supabase
+    const { data, error } = await supabase
       .from("court_bookings")
       .select("id,court_id,starts_at,ends_at,partner_name,amount_cents,booking_email,status,courts(name,kind)")
+      .eq("user_id", userId)
       .eq("status", "confirmed")
       .gte("ends_at", new Date().toISOString())
       .order("starts_at")
       .limit(12);
-    if (data) setMyBookings(data as MyBooking[]);
+    if (error) {
+      setNotice(`Eigene Buchungen konnten nicht geladen werden: ${error.message}`);
+      return;
+    }
+    setMyBookings((data ?? []) as MyBooking[]);
   };
 
   useEffect(() => {

@@ -119,6 +119,6 @@ export const officialImages = {
   restaurant: '/assets/tct/images/la-palma.png',
   court: '/assets/tct/images/hero-anlage.jpeg',
   player: '/assets/tct/images/spieler-itf.jpg',
-  tournament: '/assets/tct/images/turnier-itf.jpg',
+  tournament: '/assets/tct/images/turnier-itf-2026.png',
   school: '/assets/tct/images/tennisschule.jpeg',
 }
