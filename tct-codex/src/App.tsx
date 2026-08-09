@@ -86,6 +86,9 @@ type DownloadItem = {
   file: string;
 };
 type PartnerItem = { id: string; name: string; website: string; logo: string; note: string };
+type BoardMember = { id: string; name: string; role: string; photo: string };
+type HistoryEvent = { id: string; year: string; title: string; label: string; text: string; image: string };
+type FacilityItem = { id: string; number: string; title: string; eyebrow: string; text: string; action: string; href: string; image: string };
 type ClubSettings = {
   openingHours: string;
   tennisBookingUrl: string;
@@ -205,6 +208,9 @@ type AdminEditor =
   | "club"
   | "downloads"
   | "partners"
+  | "board"
+  | "history"
+  | "facilities"
   | "focus"
   | "assistant"
   | "booking"
@@ -794,6 +800,148 @@ function PartnerManager({ open, close, items, save, remove }: { open: boolean; c
   </div>;
 }
 
+function BoardManager({
+  open, close, items, saveAll, addOne, remove, uploadPhoto,
+}: {
+  open: boolean; close: () => void; items: BoardMember[];
+  saveAll: (event: FormEvent<HTMLFormElement>) => void;
+  addOne: (event: FormEvent<HTMLFormElement>) => void;
+  remove: (item: BoardMember) => void;
+  uploadPhoto: (id: string, file: File) => void;
+}) {
+  if (!open) return null;
+  return <div className="editor-overlay content-manager" role="dialog" aria-modal="true" aria-label="Vorstand verwalten">
+    <button className="admin-close" onClick={close} aria-label="Vorstandsverwaltung schließen"><X size={23} /></button>
+    <div className="content-manager-card">
+      <header><div><p className="eyebrow"><span /> Vorstand</p><h2>Vorstand.<br /><em>Pflegen.</em></h2><p>Namen und Rollen ändern, neue Mitglieder aufnehmen oder Fotos hinterlegen.</p></div></header>
+      <div className="content-manager-grid">
+        <form onSubmit={addOne}>
+          <p className="kicker">NEUES VORSTANDSMITGLIED</p>
+          <label>Name<input required name="newName" placeholder="Vor- und Nachname" /></label>
+          <label>Funktion<input required name="newRole" placeholder="z. B. Schatzmeisterin" /></label>
+          <button className="button button-light" type="submit">Mitglied aufnehmen <ArrowRight size={17} /></button>
+        </form>
+        <section className="content-manager-list">
+          <div><p className="kicker">AKTUELLER VORSTAND</p></div>
+          {items.length ? (
+            <form onSubmit={saveAll}>
+              {items.map((item, index) => (
+                <article key={item.id} className="content-manager-row">
+                  {item.photo ? <img className="partner-admin-logo" src={item.photo} alt="" /> : <span className="content-manager-noimage">Kein Foto</span>}
+                  <div>
+                    <label>Name<input required name={`name-${index}`} defaultValue={item.name} /></label>
+                    <label>Funktion<input required name={`role-${index}`} defaultValue={item.role} /></label>
+                    <label>Foto<input type="file" accept="image/png,image/jpeg,image/webp" onChange={(event) => { const file = event.target.files?.[0]; if (file) void uploadPhoto(item.id, file); }} /></label>
+                    <button className="danger" type="button" onClick={() => remove(item)}>Löschen</button>
+                  </div>
+                </article>
+              ))}
+              <button className="button button-light" type="submit">Änderungen speichern <Check size={17} /></button>
+            </form>
+          ) : <p className="content-manager-empty">Noch kein Vorstand angelegt.</p>}
+        </section>
+      </div>
+    </div>
+  </div>;
+}
+
+function HistoryManager({
+  open, close, items, saveAll, addOne, remove, uploadImage,
+}: {
+  open: boolean; close: () => void; items: HistoryEvent[];
+  saveAll: (event: FormEvent<HTMLFormElement>) => void;
+  addOne: (event: FormEvent<HTMLFormElement>) => void;
+  remove: (item: HistoryEvent) => void;
+  uploadImage: (id: string, file: File) => void;
+}) {
+  if (!open) return null;
+  return <div className="editor-overlay content-manager" role="dialog" aria-modal="true" aria-label="Vereinschronik verwalten">
+    <button className="admin-close" onClick={close} aria-label="Chronikverwaltung schließen"><X size={23} /></button>
+    <div className="content-manager-card">
+      <header><div><p className="eyebrow"><span /> Vereinschronik</p><h2>Chronik.<br /><em>Fortschreiben.</em></h2><p>Meilensteine bearbeiten, neue Jahre ergänzen oder Einträge entfernen.</p></div></header>
+      <div className="content-manager-grid">
+        <form onSubmit={addOne}>
+          <p className="kicker">NEUER CHRONIK-EINTRAG</p>
+          <label>Jahr<input required name="newYear" placeholder="z. B. 2026" /></label>
+          <label>Titel<input required name="newTitle" placeholder="Was ist passiert?" /></label>
+          <button className="button button-light" type="submit">Eintrag anlegen <ArrowRight size={17} /></button>
+        </form>
+        <section className="content-manager-list">
+          <div><p className="kicker">CHRONIK</p></div>
+          {items.length ? (
+            <form onSubmit={saveAll}>
+              {items.map((item, index) => (
+                <article key={item.id} className="content-manager-row">
+                  {item.image ? <img className="partner-admin-logo" src={item.image} alt="" /> : <span className="content-manager-noimage">Kein Bild</span>}
+                  <div>
+                    <label>Jahr<input required name={`year-${index}`} defaultValue={item.year} /></label>
+                    <label>Titel<input required name={`title-${index}`} defaultValue={item.title} /></label>
+                    <label>Kurzlabel <small>optional</small><input name={`label-${index}`} defaultValue={item.label} /></label>
+                    <label>Text <small>optional</small><textarea name={`text-${index}`} rows={2} defaultValue={item.text} /></label>
+                    <label>Bild<input type="file" accept="image/png,image/jpeg,image/webp" onChange={(event) => { const file = event.target.files?.[0]; if (file) void uploadImage(item.id, file); }} /></label>
+                    <button className="danger" type="button" onClick={() => remove(item)}>Löschen</button>
+                  </div>
+                </article>
+              ))}
+              <button className="button button-light" type="submit">Änderungen speichern <Check size={17} /></button>
+            </form>
+          ) : <p className="content-manager-empty">Noch keine Chronik-Einträge angelegt.</p>}
+        </section>
+      </div>
+    </div>
+  </div>;
+}
+
+function FacilityManager({
+  open, close, items, saveAll, addOne, remove, uploadImage,
+}: {
+  open: boolean; close: () => void; items: FacilityItem[];
+  saveAll: (event: FormEvent<HTMLFormElement>) => void;
+  addOne: (event: FormEvent<HTMLFormElement>) => void;
+  remove: (item: FacilityItem) => void;
+  uploadImage: (id: string, file: File) => void;
+}) {
+  if (!open) return null;
+  return <div className="editor-overlay content-manager" role="dialog" aria-modal="true" aria-label="Anlage-Bereiche verwalten">
+    <button className="admin-close" onClick={close} aria-label="Anlagenverwaltung schließen"><X size={23} /></button>
+    <div className="content-manager-card">
+      <header><div><p className="eyebrow"><span /> Anlage</p><h2>Bereiche.<br /><em>Pflegen.</em></h2><p>Texte, Zahlen, Bilder und Buchungslinks für Außenplätze, Halle, Padel & Co.</p></div></header>
+      <div className="content-manager-grid">
+        <form onSubmit={addOne}>
+          <p className="kicker">NEUER BEREICH</p>
+          <label>Titel<input required name="newTitle" placeholder="z. B. Sauna" /></label>
+          <label>Zahl <small>optional</small><input name="newNumber" placeholder="z. B. 1" /></label>
+          <label>Text <small>optional</small><textarea name="newText" rows={2} placeholder="Kurzbeschreibung" /></label>
+          <button className="button button-light" type="submit">Bereich anlegen <ArrowRight size={17} /></button>
+        </form>
+        <section className="content-manager-list">
+          <div><p className="kicker">ANLAGE-BEREICHE</p></div>
+          {items.length ? (
+            <form onSubmit={saveAll}>
+              {items.map((item, index) => (
+                <article key={item.id} className="content-manager-row">
+                  {item.image ? <img className="partner-admin-logo" src={item.image} alt="" /> : <span className="content-manager-noimage">Kein Bild</span>}
+                  <div>
+                    <label>Titel<input required name={`title-${index}`} defaultValue={item.title} /></label>
+                    <label>Zahl <small>optional</small><input name={`number-${index}`} defaultValue={item.number} /></label>
+                    <label>Eyebrow <small>optional</small><input name={`eyebrow-${index}`} defaultValue={item.eyebrow} /></label>
+                    <label>Text<textarea required name={`text-${index}`} rows={2} defaultValue={item.text} /></label>
+                    <label>Button-Text <small>optional</small><input name={`action-${index}`} defaultValue={item.action} /></label>
+                    <label>Link <small>optional</small><input name={`href-${index}`} defaultValue={item.href} /></label>
+                    <label>Bild<input type="file" accept="image/png,image/jpeg,image/webp" onChange={(event) => { const file = event.target.files?.[0]; if (file) void uploadImage(item.id, file); }} /></label>
+                    <button className="danger" type="button" onClick={() => remove(item)}>Löschen</button>
+                  </div>
+                </article>
+              ))}
+              <button className="button button-light" type="submit">Änderungen speichern <Check size={17} /></button>
+            </form>
+          ) : <p className="content-manager-empty">Noch keine Bereiche angelegt.</p>}
+        </section>
+      </div>
+    </div>
+  </div>;
+}
+
 function SiteImageManager({
   open,
   close,
@@ -1354,6 +1502,42 @@ function App() {
     downloads.map((download) => ({ ...download })),
   );
   const [livePartners, setLivePartners] = useState<PartnerItem[]>([]);
+  const [liveBoard, setLiveBoard] = useState<BoardMember[]>(
+    board.map(([name, role]) => ({
+      id: name.toLowerCase().replace(/[^a-z0-9]+/g, "-"),
+      name,
+      role,
+      photo: boardPortraits[name] ?? "",
+    })),
+  );
+  const [liveHistory, setLiveHistory] = useState<HistoryEvent[]>(
+    history.map(([year, title]) => ({
+      id: year,
+      year,
+      title,
+      label: historyDetails[year]?.label ?? "",
+      text: historyDetails[year]?.text ?? "",
+      image: historyDetails[year]?.image ?? "",
+    })),
+  );
+  const [liveFacilities, setLiveFacilities] = useState<FacilityItem[]>(
+    // facilityExperiences (4 Einträge, inkl. La Palma) ist die Basis; die
+    // kürzere facilities-Liste (nur 3, ohne Restaurant) liefert nur die
+    // Stat-Zahl für die ersten drei.
+    facilityExperiences.map((experience, index) => {
+      const stat = facilities[index];
+      return {
+        id: experience.title.toLowerCase().replace(/[^a-z0-9]+/g, "-"),
+        number: stat?.number ?? "",
+        title: experience.title,
+        eyebrow: experience.eyebrow,
+        text: experience.text,
+        action: experience.action,
+        href: experience.href,
+        image: officialImages[experience.image as SiteImageKey] ?? "",
+      };
+    }),
+  );
   const [liveClub, setLiveClub] = useState<ClubSettings>({
     openingHours:
       "Aktuelle Platz- und Hallenzeiten direkt über die Buchung prüfen.",
@@ -1529,6 +1713,36 @@ function App() {
       if (Array.isArray(data?.value?.items)) setLivePartners(data.value.items as PartnerItem[]);
     };
     void loadPartners();
+  }, []);
+
+  useEffect(() => {
+    const client = supabase;
+    if (!client) return;
+    const loadBoard = async () => {
+      const { data } = await client.from("club_content").select("value").eq("key", "board").maybeSingle();
+      if (Array.isArray(data?.value?.items)) setLiveBoard(data.value.items as BoardMember[]);
+    };
+    void loadBoard();
+  }, []);
+
+  useEffect(() => {
+    const client = supabase;
+    if (!client) return;
+    const loadHistory = async () => {
+      const { data } = await client.from("club_content").select("value").eq("key", "history").maybeSingle();
+      if (Array.isArray(data?.value?.items)) setLiveHistory(data.value.items as HistoryEvent[]);
+    };
+    void loadHistory();
+  }, []);
+
+  useEffect(() => {
+    const client = supabase;
+    if (!client) return;
+    const loadFacilities = async () => {
+      const { data } = await client.from("club_content").select("value").eq("key", "facilities").maybeSingle();
+      if (Array.isArray(data?.value?.items)) setLiveFacilities(data.value.items as FacilityItem[]);
+    };
+    void loadFacilities();
   }, []);
 
   useEffect(() => {
@@ -2837,13 +3051,38 @@ function App() {
     setAdminEditor(null);
   };
 
+  const addPriceTier = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    if (!supabase || !adminUserId) return;
+    const form = new FormData(event.currentTarget);
+    const name = String(form.get("newName") ?? "").trim();
+    if (!name) return;
+    const item: PriceItem = {
+      name,
+      price: String(form.get("newPrice") ?? "").trim(),
+      monthly: String(form.get("newMonthly") ?? "").trim(),
+    };
+    const items = [...liveMembership, item];
+    const { error } = await supabase.from("club_content").upsert({ key: "membership", value: { items }, updated_by: adminUserId });
+    if (error) { setAdminNotice(`Beitragsstufe konnte nicht angelegt werden: ${error.message}`); return; }
+    setLiveMembership(items); event.currentTarget.reset(); setAdminNotice(`„${name}“ wurde hinzugefügt.`);
+  };
+
+  const deletePriceTier = async (item: PriceItem) => {
+    if (!supabase || !adminUserId || !window.confirm(`„${item.name}“ wirklich löschen?`)) return;
+    const items = liveMembership.filter((price) => price !== item);
+    const { error } = await supabase.from("club_content").upsert({ key: "membership", value: { items }, updated_by: adminUserId });
+    if (error) { setAdminNotice(`Konnte nicht gelöscht werden: ${error.message}`); return; }
+    setLiveMembership(items); setAdminNotice(`„${item.name}“ wurde gelöscht.`);
+  };
+
   const saveTeams = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     if (!supabase || !adminUserId) return;
     const form = new FormData(event.currentTarget);
     const items = liveTeams.map((team, index) => ({
-      name: team.name,
-      number: team.number,
+      name: String(form.get(`name-${index}`) ?? team.name).trim(),
+      number: String(form.get(`number-${index}`) ?? team.number).trim(),
       text: String(form.get(`text-${index}`)),
       note: String(form.get(`note-${index}`)),
     }));
@@ -2859,6 +3098,32 @@ function App() {
     setLiveTeams(items);
     setAdminNotice("Mannschaftsinformationen wurden aktualisiert.");
     setAdminEditor(null);
+  };
+
+  const addTeam = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    if (!supabase || !adminUserId) return;
+    const form = new FormData(event.currentTarget);
+    const name = String(form.get("newName") ?? "").trim();
+    if (!name) return;
+    const item: TeamGroup = {
+      name,
+      number: String(form.get("newNumber") ?? "").trim(),
+      text: String(form.get("newText") ?? "").trim(),
+      note: String(form.get("newNote") ?? "").trim(),
+    };
+    const items = [...liveTeams, item];
+    const { error } = await supabase.from("club_content").upsert({ key: "teams", value: { items }, updated_by: adminUserId });
+    if (error) { setAdminNotice(`Mannschaft konnte nicht angelegt werden: ${error.message}`); return; }
+    setLiveTeams(items); event.currentTarget.reset(); setAdminNotice(`„${name}“ wurde hinzugefügt.`);
+  };
+
+  const deleteTeam = async (item: TeamGroup) => {
+    if (!supabase || !adminUserId || !window.confirm(`„${item.name}“ wirklich löschen?`)) return;
+    const items = liveTeams.filter((team) => team !== item);
+    const { error } = await supabase.from("club_content").upsert({ key: "teams", value: { items }, updated_by: adminUserId });
+    if (error) { setAdminNotice(`Konnte nicht gelöscht werden: ${error.message}`); return; }
+    setLiveTeams(items); setAdminNotice(`„${item.name}“ wurde gelöscht.`);
   };
 
   const saveClubSettings = async (event: FormEvent<HTMLFormElement>) => {
@@ -3020,6 +3285,179 @@ function App() {
     const match = item.logo.match(/\/storage\/v1\/object\/public\/club-media\/(.+)$/);
     if (match) await supabase.storage.from("club-media").remove([match[1]]);
     setLivePartners(items); setAdminNotice(`${item.name} wurde entfernt.`);
+  };
+
+  const uploadClubMediaFile = async (folder: string, file: File) => {
+    const path = `${folder}/${crypto.randomUUID()}-${file.name.toLowerCase().replace(/[^a-z0-9._-]/g, "-")}`;
+    const { error } = await supabase!.storage.from("club-media").upload(path, file, { upsert: false });
+    if (error) throw error;
+    return supabase!.storage.from("club-media").getPublicUrl(path).data.publicUrl;
+  };
+
+  const removeClubMediaFile = async (url: string) => {
+    const match = url.match(/\/storage\/v1\/object\/public\/club-media\/(.+)$/);
+    if (match) await supabase!.storage.from("club-media").remove([match[1]]);
+  };
+
+  // --- Vorstand ---------------------------------------------------------
+  const saveBoard = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    if (!supabase || !adminUserId) return;
+    const form = new FormData(event.currentTarget);
+    const items = liveBoard.map((member, index) => ({
+      ...member,
+      name: String(form.get(`name-${index}`) ?? member.name).trim(),
+      role: String(form.get(`role-${index}`) ?? member.role).trim(),
+    }));
+    const { error } = await supabase.from("club_content").upsert({ key: "board", value: { items }, updated_by: adminUserId });
+    if (error) { setAdminNotice(`Vorstand konnte nicht gespeichert werden: ${error.message}`); return; }
+    setLiveBoard(items); setAdminNotice("Vorstand aktualisiert.");
+  };
+
+  const addBoardMember = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    if (!supabase || !adminUserId) return;
+    const form = new FormData(event.currentTarget);
+    const name = String(form.get("newName") ?? "").trim();
+    const role = String(form.get("newRole") ?? "").trim();
+    if (!name || !role) return;
+    const item: BoardMember = { id: crypto.randomUUID(), name, role, photo: "" };
+    const items = [...liveBoard, item];
+    const { error } = await supabase.from("club_content").upsert({ key: "board", value: { items }, updated_by: adminUserId });
+    if (error) { setAdminNotice(`Vorstandsmitglied konnte nicht angelegt werden: ${error.message}`); return; }
+    setLiveBoard(items); event.currentTarget.reset(); setAdminNotice(`${name} wurde zum Vorstand hinzugefügt.`);
+  };
+
+  const uploadBoardPhoto = async (id: string, file: File) => {
+    if (!supabase || !adminUserId) return;
+    let url: string;
+    try { url = await uploadClubMediaFile("board", file); }
+    catch (error) { setAdminNotice(`Foto-Upload fehlgeschlagen: ${(error as Error).message}`); return; }
+    const items = liveBoard.map((member) => (member.id === id ? { ...member, photo: url } : member));
+    const { error } = await supabase.from("club_content").upsert({ key: "board", value: { items }, updated_by: adminUserId });
+    if (error) { setAdminNotice(`Foto konnte nicht gespeichert werden: ${error.message}`); return; }
+    setLiveBoard(items);
+  };
+
+  const deleteBoardMember = async (item: BoardMember) => {
+    if (!supabase || !adminUserId || !window.confirm(`${item.name} wirklich aus dem Vorstand entfernen?`)) return;
+    const items = liveBoard.filter((member) => member.id !== item.id);
+    const { error } = await supabase.from("club_content").upsert({ key: "board", value: { items }, updated_by: adminUserId });
+    if (error) { setAdminNotice(`Konnte nicht entfernt werden: ${error.message}`); return; }
+    if (item.photo) await removeClubMediaFile(item.photo);
+    setLiveBoard(items); setAdminNotice(`${item.name} wurde entfernt.`);
+  };
+
+  // --- Vereinschronik -----------------------------------------------------
+  const saveHistory = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    if (!supabase || !adminUserId) return;
+    const form = new FormData(event.currentTarget);
+    const items = liveHistory.map((entry, index) => ({
+      ...entry,
+      year: String(form.get(`year-${index}`) ?? entry.year).trim(),
+      title: String(form.get(`title-${index}`) ?? entry.title).trim(),
+      label: String(form.get(`label-${index}`) ?? entry.label).trim(),
+      text: String(form.get(`text-${index}`) ?? entry.text).trim(),
+    }));
+    const { error } = await supabase.from("club_content").upsert({ key: "history", value: { items }, updated_by: adminUserId });
+    if (error) { setAdminNotice(`Chronik konnte nicht gespeichert werden: ${error.message}`); return; }
+    setLiveHistory(items); setAdminNotice("Chronik aktualisiert.");
+  };
+
+  const addHistoryEvent = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    if (!supabase || !adminUserId) return;
+    const form = new FormData(event.currentTarget);
+    const year = String(form.get("newYear") ?? "").trim();
+    const title = String(form.get("newTitle") ?? "").trim();
+    if (!year || !title) return;
+    const item: HistoryEvent = { id: crypto.randomUUID(), year, title, label: "", text: "", image: "" };
+    const items = [...liveHistory, item].sort((a, b) => a.year.localeCompare(b.year));
+    const { error } = await supabase.from("club_content").upsert({ key: "history", value: { items }, updated_by: adminUserId });
+    if (error) { setAdminNotice(`Eintrag konnte nicht angelegt werden: ${error.message}`); return; }
+    setLiveHistory(items); event.currentTarget.reset(); setAdminNotice(`${year} wurde zur Chronik hinzugefügt.`);
+  };
+
+  const uploadHistoryImage = async (id: string, file: File) => {
+    if (!supabase || !adminUserId) return;
+    let url: string;
+    try { url = await uploadClubMediaFile("history", file); }
+    catch (error) { setAdminNotice(`Bild-Upload fehlgeschlagen: ${(error as Error).message}`); return; }
+    const items = liveHistory.map((entry) => (entry.id === id ? { ...entry, image: url } : entry));
+    const { error } = await supabase.from("club_content").upsert({ key: "history", value: { items }, updated_by: adminUserId });
+    if (error) { setAdminNotice(`Bild konnte nicht gespeichert werden: ${error.message}`); return; }
+    setLiveHistory(items);
+  };
+
+  const deleteHistoryEvent = async (item: HistoryEvent) => {
+    if (!supabase || !adminUserId || !window.confirm(`„${item.year} · ${item.title}“ wirklich löschen?`)) return;
+    const items = liveHistory.filter((entry) => entry.id !== item.id);
+    const { error } = await supabase.from("club_content").upsert({ key: "history", value: { items }, updated_by: adminUserId });
+    if (error) { setAdminNotice(`Konnte nicht gelöscht werden: ${error.message}`); return; }
+    if (item.image) await removeClubMediaFile(item.image);
+    setLiveHistory(items); setAdminNotice(`Eintrag „${item.title}“ wurde gelöscht.`);
+  };
+
+  // --- Anlage-Bereiche ---------------------------------------------------
+  const saveFacilities = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    if (!supabase || !adminUserId) return;
+    const form = new FormData(event.currentTarget);
+    const items = liveFacilities.map((facility, index) => ({
+      ...facility,
+      number: String(form.get(`number-${index}`) ?? facility.number).trim(),
+      title: String(form.get(`title-${index}`) ?? facility.title).trim(),
+      eyebrow: String(form.get(`eyebrow-${index}`) ?? facility.eyebrow).trim(),
+      text: String(form.get(`text-${index}`) ?? facility.text).trim(),
+      action: String(form.get(`action-${index}`) ?? facility.action).trim(),
+      href: String(form.get(`href-${index}`) ?? facility.href).trim(),
+    }));
+    const { error } = await supabase.from("club_content").upsert({ key: "facilities", value: { items }, updated_by: adminUserId });
+    if (error) { setAdminNotice(`Anlage-Bereiche konnten nicht gespeichert werden: ${error.message}`); return; }
+    setLiveFacilities(items); setAdminNotice("Anlage-Bereiche aktualisiert.");
+  };
+
+  const addFacility = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    if (!supabase || !adminUserId) return;
+    const form = new FormData(event.currentTarget);
+    const title = String(form.get("newTitle") ?? "").trim();
+    if (!title) return;
+    const item: FacilityItem = {
+      id: crypto.randomUUID(),
+      number: String(form.get("newNumber") ?? "").trim(),
+      title,
+      eyebrow: "",
+      text: String(form.get("newText") ?? "").trim(),
+      action: "Mehr erfahren",
+      href: "/anlage",
+      image: "",
+    };
+    const items = [...liveFacilities, item];
+    const { error } = await supabase.from("club_content").upsert({ key: "facilities", value: { items }, updated_by: adminUserId });
+    if (error) { setAdminNotice(`Bereich konnte nicht angelegt werden: ${error.message}`); return; }
+    setLiveFacilities(items); event.currentTarget.reset(); setAdminNotice(`„${title}“ wurde hinzugefügt.`);
+  };
+
+  const uploadFacilityImage = async (id: string, file: File) => {
+    if (!supabase || !adminUserId) return;
+    let url: string;
+    try { url = await uploadClubMediaFile("facilities", file); }
+    catch (error) { setAdminNotice(`Bild-Upload fehlgeschlagen: ${(error as Error).message}`); return; }
+    const items = liveFacilities.map((facility) => (facility.id === id ? { ...facility, image: url } : facility));
+    const { error } = await supabase.from("club_content").upsert({ key: "facilities", value: { items }, updated_by: adminUserId });
+    if (error) { setAdminNotice(`Bild konnte nicht gespeichert werden: ${error.message}`); return; }
+    setLiveFacilities(items);
+  };
+
+  const deleteFacility = async (item: FacilityItem) => {
+    if (!supabase || !adminUserId || !window.confirm(`„${item.title}“ wirklich löschen?`)) return;
+    const items = liveFacilities.filter((facility) => facility.id !== item.id);
+    const { error } = await supabase.from("club_content").upsert({ key: "facilities", value: { items }, updated_by: adminUserId });
+    if (error) { setAdminNotice(`Konnte nicht gelöscht werden: ${error.message}`); return; }
+    if (item.image) await removeClubMediaFile(item.image);
+    setLiveFacilities(items); setAdminNotice(`„${item.title}“ wurde gelöscht.`);
   };
 
   const uploadSiteImage = async (key: SiteImageKey, file: File) => {
@@ -3225,6 +3663,33 @@ function App() {
         items={livePartners}
         save={(event) => void savePartner(event)}
         remove={(item) => void deletePartner(item)}
+      />
+      <BoardManager
+        open={adminEditor === "board" && canManageGeneralContent}
+        close={() => setAdminEditor(null)}
+        items={liveBoard}
+        saveAll={(event) => void saveBoard(event)}
+        addOne={(event) => void addBoardMember(event)}
+        remove={(item) => void deleteBoardMember(item)}
+        uploadPhoto={(id, file) => void uploadBoardPhoto(id, file)}
+      />
+      <HistoryManager
+        open={adminEditor === "history" && canManageGeneralContent}
+        close={() => setAdminEditor(null)}
+        items={liveHistory}
+        saveAll={(event) => void saveHistory(event)}
+        addOne={(event) => void addHistoryEvent(event)}
+        remove={(item) => void deleteHistoryEvent(item)}
+        uploadImage={(id, file) => void uploadHistoryImage(id, file)}
+      />
+      <FacilityManager
+        open={adminEditor === "facilities" && canManageGeneralContent}
+        close={() => setAdminEditor(null)}
+        items={liveFacilities}
+        saveAll={(event) => void saveFacilities(event)}
+        addOne={(event) => void addFacility(event)}
+        remove={(item) => void deleteFacility(item)}
+        uploadImage={(id, file) => void uploadFacilityImage(id, file)}
       />
       <SiteImageManager
         open={adminEditor === "media"}
@@ -3591,12 +4056,12 @@ function App() {
                 <span className="image-label">Am Moselstadion · Trier</span>
               </div>
               <div className="facility-list">
-                {facilities.map((item, index) => (
-                  <article className="facility-item" key={item.label}>
+                {liveFacilities.filter((item) => item.number).map((item, index) => (
+                  <article className="facility-item" key={item.id}>
                     <span className="facility-index">0{index + 1}</span>
                     <b>{item.number}</b>
                     <div>
-                      <h3>{item.label}</h3>
+                      <h3>{item.title}</h3>
                       <p>{item.text}</p>
                     </div>
                     <ChevronRight size={21} />
@@ -3650,22 +4115,19 @@ function App() {
               <p className="section-note">Dein Club, dein Spiel.</p>
             </div>
             <div className="experience-grid motion">
-              {facilityExperiences.map((experience, index) => (
+              {liveFacilities.map((item, index) => (
                 <article
                   className={`experience-card experience-${index + 1}`}
-                  key={experience.title}
+                  key={item.id}
                 >
-                  <img
-                    src={liveSiteImages[experience.image]}
-                    alt={experience.title}
-                  />
+                  {item.image && <img src={item.image} alt={item.title} />}
                   <div className="experience-shade" />
                   <div className="experience-content">
-                    <p className="kicker">{experience.eyebrow}</p>
-                    <h3>{experience.title}</h3>
-                    <p>{experience.text}</p>
-                    <a href={experience.image === "restaurant" ? experience.href : "/booking"}>
-                      {experience.image === "restaurant" ? experience.action : "Plätze buchen"} <ArrowRight size={17} />
+                    <p className="kicker">{item.eyebrow}</p>
+                    <h3>{item.title}</h3>
+                    <p>{item.text}</p>
+                    <a href={item.href || "/booking"}>
+                      {item.action || "Mehr erfahren"} <ArrowRight size={17} />
                     </a>
                   </div>
                   <span className="experience-index">0{index + 1}</span>
@@ -3806,25 +4268,24 @@ function App() {
               <em>die weiter spielt.</em>
             </h2>
             <div className="history-grid motion">
-              {history.map(([year, title]) => {
-                const detail = historyDetails[year];
-                return (
-                  <article key={year} className="history-card">
+              {liveHistory.map((entry) => (
+                <article key={entry.id} className="history-card">
+                  {entry.image && (
                     <img
                       loading="lazy"
-                      src={detail.image}
+                      src={entry.image}
                       alt="Historisches Motiv des Tennisclub Trier"
                     />
-                    <div className="history-card-shade" />
-                    <div className="history-card-content">
-                      <p>{detail.label}</p>
-                      <span>{year}</span>
-                      <h3>{title}</h3>
-                      <small>{detail.text}</small>
-                    </div>
-                  </article>
-                );
-              })}
+                  )}
+                  <div className="history-card-shade" />
+                  <div className="history-card-content">
+                    <p>{entry.label}</p>
+                    <span>{entry.year}</span>
+                    <h3>{entry.title}</h3>
+                    <small>{entry.text}</small>
+                  </div>
+                </article>
+              ))}
             </div>
           </div>
         </section>
@@ -4170,29 +4631,29 @@ function App() {
               <em>Bewegung.</em>
             </h2>
             <div className="board-grid motion">
-              {board.map(([name, role], i) => (
-                <article key={name}>
+              {liveBoard.map((member, i) => (
+                <article key={member.id}>
                   <span>0{i + 1}</span>
                   <div
-                    className={`portrait-placeholder ${boardPortraits[name] ? "has-portrait" : ""}`}
+                    className={`portrait-placeholder ${member.photo ? "has-portrait" : ""}`}
                   >
-                    {boardPortraits[name] ? (
+                    {member.photo ? (
                       <img
                         loading="lazy"
-                        src={boardPortraits[name]}
-                        alt={name}
+                        src={member.photo}
+                        alt={member.name}
                       />
                     ) : (
                       <b>
-                        {name
+                        {member.name
                           .split(" ")
                           .map((word) => word[0])
                           .join("")}
                       </b>
                     )}
                   </div>
-                  <h3>{name}</h3>
-                  <p>{role}</p>
+                  <h3>{member.name}</h3>
+                  <p>{member.role}</p>
                 </article>
               ))}
             </div>
@@ -5171,6 +5632,21 @@ function App() {
                 <UsersRound size={18} /> Partner
               </a>
             )}
+            {canManageGeneralContent && (
+              <a onClick={() => setAdminEditor("board")}>
+                <UsersRound size={18} /> Vorstand
+              </a>
+            )}
+            {canManageGeneralContent && (
+              <a onClick={() => setAdminEditor("history")}>
+                <CalendarDays size={18} /> Chronik
+              </a>
+            )}
+            {canManageGeneralContent && (
+              <a onClick={() => setAdminEditor("facilities")}>
+                <Settings2 size={18} /> Anlage-Bereiche
+              </a>
+            )}
             {canManageInbox && (
               <a onClick={() => setAdminEditor("inbox")}>
                 <Mail size={18} /> Postfach
@@ -5311,6 +5787,27 @@ function App() {
                 <button className="admin-task" onClick={() => setAdminEditor("partners")}>
                   <UsersRound size={19} />
                   <span><b>Partner verwalten</b><small>Logo, Website und Sponsoren sichtbar machen</small></span>
+                  <ArrowRight size={18} />
+                </button>
+              )}
+              {canManageGeneralContent && (
+                <button className="admin-task" onClick={() => setAdminEditor("board")}>
+                  <UsersRound size={19} />
+                  <span><b>Vorstand verwalten</b><small>Mitglieder aufnehmen, bearbeiten, entfernen</small></span>
+                  <ArrowRight size={18} />
+                </button>
+              )}
+              {canManageGeneralContent && (
+                <button className="admin-task" onClick={() => setAdminEditor("history")}>
+                  <CalendarDays size={19} />
+                  <span><b>Chronik verwalten</b><small>Meilensteine ergänzen oder ändern</small></span>
+                  <ArrowRight size={18} />
+                </button>
+              )}
+              {canManageGeneralContent && (
+                <button className="admin-task" onClick={() => setAdminEditor("facilities")}>
+                  <Settings2 size={19} />
+                  <span><b>Anlage-Bereiche verwalten</b><small>Außenplätze, Halle, Padel &amp; Co.</small></span>
                   <ArrowRight size={18} />
                 </button>
               )}
@@ -5730,10 +6227,35 @@ function App() {
                           defaultValue={item.monthly}
                         />
                       </label>
+                      <button
+                        className="danger"
+                        type="button"
+                        onClick={() => void deletePriceTier(item)}
+                      >
+                        Löschen
+                      </button>
                     </fieldset>
                   ))}
                   <button className="button button-light" type="submit">
                     Beiträge speichern <Check size={17} />
+                  </button>
+                </form>
+                <form className="admin-add-form" onSubmit={addPriceTier}>
+                  <p className="kicker">NEUE BEITRAGSSTUFE</p>
+                  <label>
+                    Bezeichnung
+                    <input required name="newName" placeholder="z. B. Familienbeitrag" />
+                  </label>
+                  <label>
+                    Jahrespreis
+                    <input name="newPrice" placeholder="z. B. 200 €" />
+                  </label>
+                  <label>
+                    Monatshinweis
+                    <input name="newMonthly" placeholder="z. B. 28,00 € / Monat*" />
+                  </label>
+                  <button className="button button-outline" type="submit">
+                    Beitragsstufe anlegen <ArrowRight size={17} />
                   </button>
                 </form>
               </>
@@ -5988,9 +6510,22 @@ function App() {
             <form onSubmit={saveTeams}>
               {liveTeams.map((team, index) => (
                 <fieldset key={team.name}>
-                  <p className="kicker">
-                    {team.number} · {team.name}
-                  </p>
+                  <label>
+                    Nummer
+                    <input
+                      required
+                      name={`number-${index}`}
+                      defaultValue={team.number}
+                    />
+                  </label>
+                  <label>
+                    Bereich
+                    <input
+                      required
+                      name={`name-${index}`}
+                      defaultValue={team.name}
+                    />
+                  </label>
                   <label>
                     Kurzbeschreibung
                     <textarea
@@ -6009,10 +6544,39 @@ function App() {
                       defaultValue={team.note}
                     />
                   </label>
+                  <button
+                    className="danger"
+                    type="button"
+                    onClick={() => void deleteTeam(team)}
+                  >
+                    Löschen
+                  </button>
                 </fieldset>
               ))}
               <button className="button button-light" type="submit">
                 Mannschaften speichern <Check size={17} />
+              </button>
+            </form>
+            <form className="admin-add-form" onSubmit={addTeam}>
+              <p className="kicker">NEUER BEREICH</p>
+              <label>
+                Nummer
+                <input required name="newNumber" placeholder="z. B. 04" />
+              </label>
+              <label>
+                Bereich
+                <input required name="newName" placeholder="z. B. Senioren" />
+              </label>
+              <label>
+                Kurzbeschreibung
+                <textarea name="newText" rows={2} placeholder="Kurzbeschreibung" />
+              </label>
+              <label>
+                Saisonhinweis
+                <textarea name="newNote" rows={2} placeholder="Saisonhinweis" />
+              </label>
+              <button className="button button-outline" type="submit">
+                Bereich anlegen <ArrowRight size={17} />
               </button>
             </form>
           </div>
