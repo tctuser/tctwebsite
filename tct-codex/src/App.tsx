@@ -406,6 +406,27 @@ const editorialRoles = [
   "team_manager",
 ];
 
+// Supabase's FunctionsHttpError only carries a generic message; the actual
+// { error: "…" } body from our Edge Functions lives in error.context (a
+// Response) and has to be read out separately.
+async function edgeFunctionErrorMessage(
+  error: unknown,
+  fallback: string,
+): Promise<string> {
+  if (error && typeof error === "object" && "context" in error) {
+    const context = (error as { context?: unknown }).context;
+    if (context instanceof Response) {
+      try {
+        const body = await context.clone().json();
+        if (typeof body?.error === "string") return body.error;
+      } catch {
+        // response wasn't JSON — fall through to the generic message
+      }
+    }
+  }
+  return error instanceof Error ? error.message : fallback;
+}
+
 function auditChangeSummary(item: AuditItem) {
   if (item.action === "INSERT") return "Neuen Eintrag erstellt";
   if (item.action === "DELETE") return "Eintrag gelöscht";
@@ -1247,6 +1268,7 @@ function App() {
   >("login");
   const [passwordResetIdentifier, setPasswordResetIdentifier] = useState("");
   const [pendingRegistrationEmail, setPendingRegistrationEmail] = useState("");
+  const [resendingCode, setResendingCode] = useState(false);
   const [showAuthPassword, setShowAuthPassword] = useState(false);
   const [adminNotice, setAdminNotice] = useState("");
   const [adminEditor, setAdminEditor] = useState<AdminEditor>(null);
@@ -2387,10 +2409,10 @@ function App() {
       },
     );
     if (error || data?.error) {
-      setAdminNotice(
-        data?.error ??
-          `Registrierung konnte nicht abgeschlossen werden: ${error?.message ?? "Unbekannter Fehler"}`,
-      );
+      const detail =
+        (data?.error as string | undefined) ??
+        (await edgeFunctionErrorMessage(error, "Unbekannter Fehler"));
+      setAdminNotice(`Registrierung konnte nicht abgeschlossen werden: ${detail}`);
       return;
     }
     formElement.reset();
@@ -2422,7 +2444,10 @@ function App() {
       { body: { email: pendingRegistrationEmail, code } },
     );
     if (error || data?.error) {
-      setAdminNotice(data?.error ?? "Der Code konnte nicht geprüft werden.");
+      const detail =
+        (data?.error as string | undefined) ??
+        (await edgeFunctionErrorMessage(error, "Der Code konnte nicht geprüft werden."));
+      setAdminNotice(detail);
       return;
     }
     await supabase.auth.signOut();
@@ -2430,6 +2455,27 @@ function App() {
     setAuthMode("login");
     setAdminPanel("login");
     setAdminNotice("E-Mail bestätigt. Du kannst dich jetzt anmelden.");
+  };
+
+  const resendVerificationCode = async () => {
+    if (!supabase || !pendingRegistrationEmail) {
+      setAdminNotice("Bitte melde dich erneut mit deinem Passwort an, um einen neuen Code zu erhalten.");
+      return;
+    }
+    setResendingCode(true);
+    const { data, error } = await supabase.functions.invoke(
+      "resend-verification-code",
+      { body: { email: pendingRegistrationEmail } },
+    );
+    setResendingCode(false);
+    if (error || data?.error) {
+      const detail =
+        (data?.error as string | undefined) ??
+        (await edgeFunctionErrorMessage(error, "Der Code konnte nicht neu versendet werden."));
+      setAdminNotice(detail);
+      return;
+    }
+    setAdminNotice("Neuer Code versendet. Bitte prüfe auch deinen Spam-Ordner.");
   };
 
   const requestPasswordReset = async (event: FormEvent<HTMLFormElement>) => {
@@ -4852,6 +4898,14 @@ function App() {
                 </label>
                 <button className="button button-light" type="submit">
                   Konto bestätigen <Check size={17} />
+                </button>
+                <button
+                  className="auth-switch"
+                  type="button"
+                  disabled={resendingCode}
+                  onClick={resendVerificationCode}
+                >
+                  {resendingCode ? "Wird gesendet …" : "Keinen Code erhalten? Erneut senden"}
                 </button>
               </form>
             ) : authMode === "forgot" ? (
