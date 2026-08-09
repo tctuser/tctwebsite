@@ -9,6 +9,8 @@ type PartnerPost = {
   contact_email: string;
   level: string;
   availability: string;
+  age_group: string | null;
+  team: string | null;
   message: string | null;
   expires_at: string;
   created_at: string;
@@ -39,7 +41,7 @@ export function PartnerBoard({
     setLoading(true);
     const { data, error } = await supabase
       .from("partner_requests")
-      .select("id,user_id,display_name,contact_email,level,availability,message,expires_at,created_at")
+      .select("id,user_id,display_name,contact_email,level,availability,age_group,team,message,expires_at,created_at")
       .eq("active", true)
       .gt("expires_at", new Date().toISOString())
       .order("created_at", { ascending: false });
@@ -62,6 +64,8 @@ export function PartnerBoard({
       contact_email: defaultEmail,
       level: String(form.get("level") ?? "").trim(),
       availability: String(form.get("availability") ?? "").trim(),
+      age_group: String(form.get("ageGroup") ?? "").trim() || null,
+      team: String(form.get("team") ?? "").trim() || null,
       message: String(form.get("message") ?? "").trim() || null,
     });
     if (error) {
@@ -108,7 +112,9 @@ export function PartnerBoard({
           <form className="partner-form" onSubmit={(event) => void createPost(event)}>
             <label>Deine Spielstärke<input name="level" required maxLength={50} placeholder="z. B. LK 15–18 oder Freizeit" /></label>
             <label>Wann passt es dir?<input name="availability" required maxLength={120} placeholder="z. B. Dienstag und Donnerstag ab 18 Uhr" /></label>
-            <label>Kurze Nachricht <small>optional</small><textarea name="message" maxLength={500} placeholder="Zum Beispiel: Suche regelmäßigen Partner für Einzel oder Doppel." /></label>
+            <label>Alter / Altersklasse <small>optional</small><input name="ageGroup" maxLength={40} placeholder="z. B. 32, U15 oder Ü40" /></label>
+            <label>Mannschaft <small>optional</small><input name="team" maxLength={100} placeholder="z. B. Herren 30 II oder keine" /></label>
+            <label className="partner-message-field">Kurze Nachricht <small>optional</small><textarea name="message" maxLength={500} placeholder="Zum Beispiel: Suche regelmäßigen Partner für Einzel oder Doppel." /></label>
             <p>Dein Name und deine Konto-E-Mail werden nur angemeldeten TCT-Mitgliedern angezeigt.</p>
             <button className="button button-dark" type="submit">Gesuch veröffentlichen <ArrowRight size={17} /></button>
           </form>
@@ -125,6 +131,13 @@ export function PartnerBoard({
                 <div>
                   <div className="partner-title"><h3>{post.display_name}</h3>{post.user_id === userId && <span>Dein Gesuch</span>}</div>
                   <p><b>{post.level}</b><span /> {post.availability}</p>
+                  {(post.age_group || post.team) && (
+                    <p className="partner-profile-meta">
+                      {post.age_group && <b>Alter / Klasse: {post.age_group}</b>}
+                      {post.age_group && post.team && <span />}
+                      {post.team && <>Mannschaft: {post.team}</>}
+                    </p>
+                  )}
                   {post.message && <blockquote>„{post.message}“</blockquote>}
                   <small><CalendarDays size={14} /> sichtbar bis {new Intl.DateTimeFormat("de-DE", { day: "2-digit", month: "2-digit", year: "numeric" }).format(new Date(post.expires_at))}</small>
                 </div>

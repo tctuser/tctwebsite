@@ -48,8 +48,8 @@ type WaitlistEntry = {
 type PendingSlot = { court: Court; start: Date; end?: Date };
 type BookingRules = {
   advance_days: number;
-  max_active_bookings: number;
-  max_weekly_bookings: number;
+  max_daily_bookings: number;
+  daily_booking_limit_enabled: boolean;
   max_recurring_weeks: number;
   cancellation_hours: number;
 };
@@ -61,6 +61,17 @@ const toDateKey = (date: Date) => {
   const month = String(date.getMonth() + 1).padStart(2, "0");
   const day = String(date.getDate()).padStart(2, "0");
   return `${year}-${month}-${day}`;
+};
+const toClubDateKey = (date: Date) => {
+  const parts = new Intl.DateTimeFormat("de-DE", {
+    timeZone: "Europe/Berlin",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).formatToParts(date);
+  const part = (type: Intl.DateTimeFormatPartTypes) =>
+    parts.find((entry) => entry.type === type)?.value ?? "";
+  return `${part("year")}-${part("month")}-${part("day")}`;
 };
 const slotDate = (day: string, hour: number) => new Date(`${day}T${String(hour).padStart(2, "0")}:00:00`);
 const weatherLabel = (code: number) => {
@@ -135,7 +146,7 @@ export function BookingPortal({
         target_day: day,
         requested_kind: kind,
       }),
-      supabase.from("booking_rules").select("advance_days,max_active_bookings,max_weekly_bookings,max_recurring_weeks,cancellation_hours").eq("id", true).maybeSingle(),
+      supabase.from("booking_rules").select("advance_days,max_daily_bookings,daily_booking_limit_enabled,max_recurring_weeks,cancellation_hours").eq("id", true).maybeSingle(),
       supabase.from("events").select("title,starts_at,category").eq("status", "published").gte("starts_at", new Date().toISOString()).order("starts_at").limit(1).maybeSingle(),
     ]);
     if (courtData) setCourts(courtData as Court[]);
@@ -159,7 +170,7 @@ export function BookingPortal({
       .eq("status", "confirmed")
       .gte("ends_at", new Date().toISOString())
       .order("starts_at")
-      .limit(12);
+      .limit(100);
     if (error) {
       setNotice(`Eigene Buchungen konnten nicht geladen werden: ${error.message}`);
       return;
@@ -232,20 +243,12 @@ export function BookingPortal({
       ),
     [visibleCourts, schedule, day],
   );
-  const weeklyBookings = useMemo(() => {
-    const now = new Date();
-    const weekday = (now.getDay() + 6) % 7;
-    const weekStart = new Date(now);
-    weekStart.setDate(now.getDate() - weekday);
-    weekStart.setHours(0, 0, 0, 0);
-    const weekEnd = new Date(weekStart);
-    weekEnd.setDate(weekStart.getDate() + 7);
-    return myBookings.filter((booking) => {
-      const startsAt = new Date(booking.starts_at);
-      return startsAt >= weekStart && startsAt < weekEnd;
-    }).length;
-  }, [myBookings]);
-  const weeklyFree = Math.max(0, (rules?.max_weekly_bookings ?? 3) - weeklyBookings);
+  const dailyBookings = useMemo(
+    () => myBookings.filter((booking) => toClubDateKey(new Date(booking.starts_at)) === day).length,
+    [myBookings, day],
+  );
+  const dailyFree = Math.max(0, (rules?.max_daily_bookings ?? 3) - dailyBookings);
+  const dailyLimitEnabled = rules?.daily_booking_limit_enabled ?? true;
 
   const changeDay = (offset: number) => {
     const next = new Date(`${day}T12:00:00`);
@@ -449,7 +452,7 @@ export function BookingPortal({
           <div className="club-today-grid">
             <article><small>WETTER IN TRIER</small><b>{weather ? `${weather.temperature}°` : "–"}</b><span>{weather ? `${weatherLabel(weather.code)} · Wind ${weather.wind} km/h` : "Wird geladen …"}</span></article>
             <article><small>FREIE ZEITEN</small><b>{loading ? "–" : freeSlots}</b><span>{kind === "tennis" ? "heute auf den Tennisplätzen" : "heute auf dem Padel Court"}</span></article>
-            <article><small>BUCHUNGSREGEL</small><b>{rules?.max_active_bookings ?? 3} Termine</b><span>{rules ? `${rules.advance_days} Tage im Voraus · Storno bis ${rules.cancellation_hours} Std.` : "Wird geladen …"}</span></article>
+            <article><small>BUCHUNGSREGEL</small><b>{dailyLimitEnabled ? `${rules?.max_daily_bookings ?? 3} pro Tag` : "Unbegrenzt"}</b><span>{rules ? `${rules.advance_days} Tage im Voraus · Storno bis ${rules.cancellation_hours} Std.` : "Wird geladen …"}</span></article>
             <article><small>NÄCHSTER CLUBTERMIN</small><b>{nextEvent?.title ?? "Aktuell kein Termin"}</b><span>{nextEvent?.starts_at ? new Intl.DateTimeFormat("de-DE", { day: "2-digit", month: "short" }).format(new Date(nextEvent.starts_at)) : "Alle Termine im Turnierkalender"}</span></article>
           </div>
         </section>
@@ -457,16 +460,18 @@ export function BookingPortal({
         {userId && (
           <section className="booking-quota" aria-label="Dein Buchungskontingent">
             <div>
-              <p className="kicker">DEIN WOCHENKONTINGENT</p>
-              <b>{weeklyFree} frei</b>
+              <p className="kicker">DEIN TAGESKONTINGENT</p>
+              <b>{dailyLimitEnabled ? `${dailyFree} frei` : "Unbegrenzt"}</b>
               <span>
-                {weeklyBookings} von {rules?.max_weekly_bookings ?? 3} Buchungen
-                in dieser Woche genutzt
+                {dailyLimitEnabled
+                  ? `${dailyBookings} von ${rules?.max_daily_bookings ?? 3} Buchungen am ${formatDay(day)} genutzt`
+                  : "Die Tagesbegrenzung ist momentan deaktiviert"}
               </span>
             </div>
             <p>
-              Reguläre Mitglieder können pro Woche bis zu{" "}
-              {rules?.max_weekly_bookings ?? 3} Termine buchen.
+              {dailyLimitEnabled
+                ? `Reguläre Mitglieder können pro Kalendertag bis zu ${rules?.max_daily_bookings ?? 3} Termine buchen. Berechtigte Rollen sind davon ausgenommen.`
+                : "Admin und Management haben die Tagesbegrenzung momentan aufgehoben."}
             </p>
           </section>
         )}

@@ -60,7 +60,7 @@ const mobileNavGroups = [
   },
   {
     label: "Mitmachen",
-    links: [["Spielpartner finden", "/spielpartner"], ["Mitglied werden", "/mitglied-werden"], ["Tennisschule", club.schoolUrl]],
+    links: [["Spielpartner finden", "/spielpartner"], ["Mitglied werden", "/mitglied-werden"], ["Tennisschule", "/anlage#tennisschule"]],
   },
   {
     label: "Service",
@@ -3656,7 +3656,7 @@ function App() {
           </div>
         </section>
 
-        <section className="section school motion route-home route-anlage">
+        <section className="section school motion route-home route-anlage" id="tennisschule">
           <div className="school-image">
             <img src={liveSiteImages.school} alt="Kinder beim Tennistraining" />
           </div>
@@ -3676,11 +3676,9 @@ function App() {
             </p>
             <a
               className="button button-dark"
-              href={liveClub.schoolUrl}
-              target="_blank"
-              rel="noreferrer"
+              href="mailto:mgtrier@t-online.de?subject=Tennistraining%20beim%20TCT"
             >
-              Zur Tennisschule <ExternalArrow />
+              Training anfragen <ExternalArrow />
             </a>
           </div>
         </section>
