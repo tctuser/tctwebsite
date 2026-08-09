@@ -32,8 +32,13 @@ export function BookingAdmin({ open, close }: { open: boolean; close: () => void
     event.preventDefault();
     if (!supabase) return;
     const form = new FormData(event.currentTarget);
-    const { data, error } = await supabase.rpc("create_court_block", {
-      target_court_id: String(form.get("courtId")),
+    const selectedCourtIds = form.getAll("courtIds").map(String);
+    if (!selectedCourtIds.length) {
+      setNotice("Bitte wähle mindestens einen Platz aus.");
+      return;
+    }
+    const { data, error } = await supabase.rpc("create_court_blocks", {
+      target_court_ids: selectedCourtIds,
       requested_start: localDateTime(String(form.get("date")), String(form.get("startsAt"))),
       requested_end: localDateTime(String(form.get("date")), String(form.get("endsAt"))),
       block_title: String(form.get("title")).trim(),
@@ -81,7 +86,7 @@ export function BookingAdmin({ open, close }: { open: boolean; close: () => void
       <div className="booking-admin-grid">
         <form onSubmit={createBlock}>
           <p className="kicker">PLATZ SPERREN</p>
-          <label>Platz<select required name="courtId" defaultValue=""><option value="" disabled>Platz wählen</option>{courts.map((court) => <option value={court.id} key={court.id}>{court.name}</option>)}</select></label>
+          <label>Plätze <small>Mehrfachauswahl für Turniere möglich</small><select required name="courtIds" multiple size={Math.min(8, Math.max(4, courts.length))}>{courts.map((court) => <option value={court.id} key={court.id}>{court.name}</option>)}</select></label>
           <label>Grund<input required name="title" defaultValue="Platzpflege" maxLength={100} /></label>
           <label>Datum<input required name="date" type="date" min={today} defaultValue={today} /></label>
           <div className="booking-time-fields"><label>Von<input required name="startsAt" type="time" defaultValue="14:00" /></label><label>Bis<input required name="endsAt" type="time" defaultValue="18:00" /></label></div>

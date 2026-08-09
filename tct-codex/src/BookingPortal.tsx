@@ -63,10 +63,12 @@ const bookingPrice = (booking: MyBooking) => {
 export function BookingPortal({
   userId,
   defaultEmail,
+  role,
   onRequireLogin,
 }: {
   userId: string | null;
   defaultEmail: string;
+  role: string;
   onRequireLogin: () => void;
 }) {
   const [day, setDay] = useState(() => toDateKey(new Date()));
@@ -75,6 +77,7 @@ export function BookingPortal({
   const [schedule, setSchedule] = useState<ScheduleItem[]>([]);
   const [myBookings, setMyBookings] = useState<MyBooking[]>([]);
   const [pending, setPending] = useState<PendingSlot | null>(null);
+  const [selectedCourtIds, setSelectedCourtIds] = useState<string[]>([]);
   const [minutes, setMinutes] = useState(60);
   const [guestName, setGuestName] = useState("");
   const [bookingEmail, setBookingEmail] = useState(defaultEmail);
@@ -130,6 +133,8 @@ export function BookingPortal({
   }, [defaultEmail]);
 
   const visibleCourts = courts.filter((court) => court.kind === kind);
+  const canBookCourtGroups = ["management", "admin", "tournament_manager", "team_manager"].includes(role);
+  const selectedCourts = visibleCourts.filter((court) => selectedCourtIds.includes(court.id));
   const selectedEnd = pending ? new Date(pending.start.getTime() + minutes * 60_000) : null;
   const pendingPrice =
     pending?.court.kind === "padel"
@@ -143,6 +148,12 @@ export function BookingPortal({
         item.court_id === courtId &&
         new Date(item.starts_at) < end &&
         new Date(item.ends_at) > start,
+    );
+  };
+  const courtIsFreeForDuration = (courtId: string, start: Date, duration: number) => {
+    const end = new Date(start.getTime() + duration * 60_000);
+    return !schedule.some(
+      (item) => item.court_id === courtId && new Date(item.starts_at) < end && new Date(item.ends_at) > start,
     );
   };
   const freeSlots = useMemo(
@@ -168,6 +179,7 @@ export function BookingPortal({
       return;
     }
     setPending({ court, start: slotDate(day, hour) });
+    setSelectedCourtIds([court.id]);
     setMinutes(60);
     setGuestName("");
     setBookingEmail(defaultEmail);
@@ -178,13 +190,23 @@ export function BookingPortal({
 
   const book = async () => {
     if (!supabase || !pending) return;
-    const { data: booking, error } = await supabase.rpc("book_court", {
-      target_court_id: pending.court.id,
-      requested_start: pending.start.toISOString(),
-      requested_minutes: minutes,
-      guest_name: guestName.trim() || null,
-      requested_email: bookingEmail.trim(),
-    });
+    const courtIds = selectedCourtIds.length ? selectedCourtIds : [pending.court.id];
+    const isGroupBooking = courtIds.length > 1;
+    const { data, error } = isGroupBooking
+      ? await supabase.rpc("book_multiple_courts", {
+          target_court_ids: courtIds,
+          requested_start: pending.start.toISOString(),
+          requested_minutes: minutes,
+          guest_name: guestName.trim() || null,
+          requested_email: bookingEmail.trim(),
+        })
+      : await supabase.rpc("book_court", {
+          target_court_id: pending.court.id,
+          requested_start: pending.start.toISOString(),
+          requested_minutes: minutes,
+          guest_name: guestName.trim() || null,
+          requested_email: bookingEmail.trim(),
+        });
     if (error) {
       if (error.message.includes("court_bookings_no_overlap")) {
         setPending(null);
@@ -197,10 +219,19 @@ export function BookingPortal({
       setStep("edit");
       return;
     }
+    const bookings = (isGroupBooking ? data : [data]) as Array<{ id: string }>;
+    const booking = bookings[0];
     const { data: delivery, error: deliveryError } = await supabase.functions.invoke(
       "booking-confirmation",
       { body: { bookingId: booking.id } },
     );
+    if (bookings.length > 1) {
+      await Promise.all(
+        bookings.slice(1).map((item) =>
+          supabase!.functions.invoke("booking-confirmation", { body: { bookingId: item.id } }),
+        ),
+      );
+    }
     setDeliveryStatus(
       deliveryError || delivery?.error
         ? `Die Buchung ist gespeichert, aber die Bestätigungs-E-Mail konnte nicht gesendet werden: ${delivery?.error ?? deliveryError?.message ?? "Unbekannter Fehler"}`
@@ -219,6 +250,13 @@ export function BookingPortal({
     }
     setNotice("");
     setStep("confirm");
+  };
+
+  const toggleCourt = (courtId: string) => {
+    setSelectedCourtIds((ids) => {
+      if (ids.includes(courtId)) return ids.length === 1 ? ids : ids.filter((id) => id !== courtId);
+      return ids.length >= 4 ? ids : [...ids, courtId];
+    });
   };
 
   const cancelBooking = async (id: string) => {
@@ -327,7 +365,15 @@ export function BookingPortal({
               <p className="eyebrow"><span /> {pending.court.kind === "padel" ? "Padel Court" : "Tennis Court"}</p>
               <h3>{pending.court.name}</h3>
               <p className="booking-sheet-date">{formatDay(day)}<br />{formatTime(pending.start)} – {formatTime(selectedEnd)} Uhr</p>
-              {step === "edit" ? <><fieldset><legend>Dauer</legend>{[60, 90].map((value) => <button key={value} className={minutes === value ? "is-active" : ""} onClick={() => setMinutes(value)}>{value} Min</button>)}</fieldset><label>E-Mail für die Buchungsbestätigung<input required value={bookingEmail} onChange={(event) => setBookingEmail(event.target.value)} type="email" autoComplete="email" placeholder="name@beispiel.de" /><small className="booking-spam-note">Hinweis: Die Bestätigungs-E-Mail kann derzeit im Spam-Ordner landen. Bitte dort ebenfalls nachsehen.</small></label><label>Spielpartner <small>optional</small><input value={guestName} onChange={(event) => setGuestName(event.target.value)} placeholder="Name eingeben …" maxLength={100} /></label>{notice && <p className="booking-sheet-notice">{notice}</p>}<button className="button button-light" onClick={reviewBooking}>Buchung prüfen <ArrowRight size={17} /></button></> : <><div className="booking-confirm"><span>Sport</span><b>{pending.court.kind === "padel" ? "Padel" : "Tennis"}</b><span>Court</span><b>{pending.court.name}</b><span>Bestätigung an</span><b>{bookingEmail}</b><span>Spielpartner</span><b>{guestName || "Kein Gastspieler"}</b><span>Preis</span><b>{pendingPrice}</b></div><button className="button button-light" onClick={() => void book()}>Verbindlich buchen <Check size={17} /></button><button className="booking-back" onClick={() => setStep("edit")}>Zurück</button></>}
+              {step === "edit" ? <>
+                <fieldset><legend>Dauer</legend>{[60, 90].map((value) => <button key={value} className={minutes === value ? "is-active" : ""} onClick={() => setMinutes(value)}>{value} Min</button>)}</fieldset>
+                {canBookCourtGroups && pending.court.kind === "tennis" && <fieldset className="booking-group-courts"><legend>Plätze für Mannschaft / Turnier <small>bis zu 4 gleichzeitig</small></legend><div>{visibleCourts.filter((court) => court.id === pending.court.id || courtIsFreeForDuration(court.id, pending.start, minutes)).map((court) => <label key={court.id}><input type="checkbox" checked={selectedCourtIds.includes(court.id)} onChange={() => toggleCourt(court.id)} />{court.name}</label>)}</div></fieldset>}
+                <label>E-Mail für die Buchungsbestätigung<input required value={bookingEmail} onChange={(event) => setBookingEmail(event.target.value)} type="email" autoComplete="email" placeholder="name@beispiel.de" /><small className="booking-spam-note">Hinweis: Die Bestätigungs-E-Mail kann derzeit im Spam-Ordner landen. Bitte dort ebenfalls nachsehen.</small></label>
+                <label>Spielpartner <small>optional</small><input value={guestName} onChange={(event) => setGuestName(event.target.value)} placeholder="Name eingeben …" maxLength={100} /></label>
+                {notice && <p className="booking-sheet-notice">{notice}</p>}<button className="button button-light" onClick={reviewBooking}>Buchung prüfen <ArrowRight size={17} /></button>
+              </> : <>
+                <div className="booking-confirm"><span>Sport</span><b>{pending.court.kind === "padel" ? "Padel" : "Tennis"}</b><span>{selectedCourts.length > 1 ? "Plätze" : "Court"}</span><b>{selectedCourts.map((court) => court.name).join(", ") || pending.court.name}</b><span>Bestätigung an</span><b>{bookingEmail}</b><span>Spielpartner</span><b>{guestName || "Kein Gastspieler"}</b><span>Preis</span><b>{pendingPrice}</b></div><button className="button button-light" onClick={() => void book()}>Verbindlich buchen <Check size={17} /></button><button className="booking-back" onClick={() => setStep("edit")}>Zurück</button>
+              </>}
             </>}
           </div>
         </div>

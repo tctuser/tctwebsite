@@ -2693,6 +2693,7 @@ function App() {
           <BookingPortal
             userId={adminUserId}
             defaultEmail={adminEmail ?? ""}
+            role={adminRole}
             onRequireLogin={() => {
               setAuthMode("login");
               setAdminNotice("");
