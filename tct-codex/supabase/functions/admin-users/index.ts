@@ -41,6 +41,14 @@ Deno.serve(async (request) => {
     const { error } = await admin.from('profiles').update({ must_change_password: false }).eq('id', user.id)
     return Response.json(error ? { error: error.message } : { ok: true }, { headers: corsHeaders })
   }
+  if (body.action === 'changeOwnName') {
+    const displayName = typeof body.displayName === 'string' ? body.displayName.trim() : ''
+    if (displayName.length < 2 || displayName.length > 100) return Response.json({ error: 'Bitte gib einen Namen mit 2 bis 100 Zeichen ein.' }, { headers: corsHeaders })
+    const { data: beforeProfile } = await admin.from('profiles').select('id,display_name,username,login_email,role').eq('id', user.id).maybeSingle()
+    const { data: afterProfile, error } = await admin.from('profiles').update({ display_name: displayName }).eq('id', user.id).select('id,display_name,username,login_email,role').maybeSingle()
+    if (!error) await writeUserAudit('UPDATE', user.id, safeProfile(beforeProfile), safeProfile(afterProfile))
+    return Response.json(error ? { error: error.message } : { ok: true }, { headers: corsHeaders })
+  }
   if (body.action === 'changeOwnEmail') {
     const email = typeof body.email === 'string' ? body.email.trim() : ''
     if (!/^\S+@\S+\.\S+$/.test(email)) return Response.json({ error: 'Bitte eine gültige E-Mail-Adresse eingeben.' }, { headers: corsHeaders })

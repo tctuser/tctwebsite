@@ -42,13 +42,29 @@ import {
 import { supabase } from "./lib/supabase";
 import { BookingPortal } from "./BookingPortal";
 import { BookingAdmin } from "./BookingAdmin";
+import { PartnerBoard } from "./PartnerBoard";
 
 const navLinks = [
   ["Club", "/club"],
   ["Anlage", "/anlage"],
   ["Buchen", "/booking"],
+  ["Spielpartner", "/spielpartner"],
   ["Teams", "/teams"],
   ["Turniere", "/turniere"],
+];
+const mobileNavGroups = [
+  {
+    label: "Entdecken",
+    links: [["Startseite", "/"], ["Der Club", "/club"], ["Anlage & Restaurant", "/anlage"], ["Teams", "/teams"], ["Turniere", "/turniere"], ["News", "/news"]],
+  },
+  {
+    label: "Mitmachen",
+    links: [["Spielpartner finden", "/spielpartner"], ["Mitglied werden", "/mitglied-werden"], ["Tennisschule", club.schoolUrl]],
+  },
+  {
+    label: "Service",
+    links: [["Termine", "/turniere"], ["Galerie", "/galerie"], ["Downloads", "/service"], ["Kontakt", "/kontakt"], ["Partner & Sponsoren", "/partner"]],
+  },
 ];
 
 type PriceItem = { name: string; price: string; monthly: string };
@@ -58,6 +74,7 @@ type DownloadItem = {
   text: string;
   file: string;
 };
+type PartnerItem = { id: string; name: string; website: string; logo: string; note: string };
 type ClubSettings = {
   openingHours: string;
   tennisBookingUrl: string;
@@ -119,6 +136,7 @@ type AdminEditor =
   | "teams"
   | "club"
   | "downloads"
+  | "partners"
   | "focus"
   | "assistant"
   | "booking"
@@ -620,6 +638,27 @@ function DownloadManager({
   );
 }
 
+function PartnerManager({ open, close, items, save, remove }: { open: boolean; close: () => void; items: PartnerItem[]; save: (event: FormEvent<HTMLFormElement>) => void; remove: (item: PartnerItem) => void }) {
+  if (!open) return null;
+  return <div className="editor-overlay content-manager" role="dialog" aria-modal="true" aria-label="Partner verwalten">
+    <button className="admin-close" onClick={close} aria-label="Partnerverwaltung schließen"><X size={23} /></button>
+    <div className="content-manager-card">
+      <header><div><p className="eyebrow"><span /> Partner & Sponsoren</p><h2>Partner.<br /><em>Sichtbar machen.</em></h2><p>Logo hochladen, Website verlinken und Partner jederzeit wieder entfernen.</p></div></header>
+      <div className="content-manager-grid">
+        <form onSubmit={save}>
+          <p className="kicker">NEUEN PARTNER ANLEGEN</p>
+          <label>Name<input required name="name" placeholder="Name des Partners" /></label>
+          <label>Website<input required type="url" name="website" placeholder="https://www.beispiel.de" /></label>
+          <label>Logo<input required type="file" name="logo" accept="image/png,image/jpeg,image/webp,image/svg+xml" /></label>
+          <label>Hinweis <small>optional</small><textarea name="note" rows={3} placeholder="z. B. Unterstützt die TCT-Jugend" /></label>
+          <button className="button button-light" type="submit">Partner veröffentlichen <ArrowRight size={17} /></button>
+        </form>
+        <section className="content-manager-list"><div><p className="kicker">SICHTBARE PARTNER</p></div>{items.length ? items.map((item) => <article key={item.id}><img className="partner-admin-logo" src={item.logo} alt="" /><div><h3>{item.name}</h3><p>{item.website}</p>{item.note && <p>{item.note}</p>}<footer><a href={item.website} target="_blank" rel="noreferrer">Website öffnen</a><button className="danger" type="button" onClick={() => remove(item)}>Löschen</button></footer></div></article>) : <p className="content-manager-empty">Noch keine Partner angelegt.</p>}</section>
+      </div>
+    </div>
+  </div>;
+}
+
 function SiteImageManager({
   open,
   close,
@@ -1058,7 +1097,7 @@ function App() {
   const isHomePage = currentPath === "" || currentPath === "/";
   const isBookingPage = currentPath === "/booking";
   const isTournamentContactPage = currentPath === "/turnier-anmeldung";
-  const sectionPage = ["club", "anlage", "teams", "turniere", "news", "mitglied-werden", "service", "kontakt"].find(
+  const sectionPage = ["club", "anlage", "teams", "turniere", "news", "mitglied-werden", "service", "kontakt", "galerie", "partner", "spielpartner", "impressum"].find(
     (page) => currentPath === `/${page}`,
   );
   const sectionPageInfo: Record<string, { eyebrow: string; title: string; accent: string; text: string }> = {
@@ -1070,6 +1109,10 @@ function App() {
     "mitglied-werden": { eyebrow: "Willkommen im TCT", title: "Mitglied", accent: "werden.", text: "Beiträge ansehen, Unterlagen öffnen und den ersten Schritt in den Club machen." },
     service: { eyebrow: "Alles auf einen Blick", title: "TCT", accent: "Service.", text: "Offizielle Unterlagen und wichtige Downloads für den Cluballtag." },
     kontakt: { eyebrow: "Wir sind für dich da", title: "Sag", accent: "Hallo.", text: "Fragen, Interesse oder ein erstes Kennenlernen – wir freuen uns auf dich." },
+    galerie: { eyebrow: "Momente vom Moselstadion", title: "TCT", accent: "Galerie.", text: "Mannschaften, Turniere, Anlage und Clubleben in Bildern." },
+    partner: { eyebrow: "Gemeinsam für Trier", title: "Partner", accent: "werden.", text: "Sichtbarkeit, Sport und echtes Engagement für den Tennisclub Trier." },
+    spielpartner: { eyebrow: "TCT Mitgliederbörse", title: "Spielpartner", accent: "finden.", text: "Finde unkompliziert ein Match, einen festen Termin oder neue Spielpartner im Club." },
+    impressum: { eyebrow: "Tennisclub Trier 1888 e.V.", title: "Impres", accent: "sum.", text: "Angaben zum Anbieter und Kontaktmöglichkeiten des Tennisclub Trier." },
   };
   const pageInfo = sectionPage ? sectionPageInfo[sectionPage] : null;
   const isFocusedPage = !isHomePage;
@@ -1084,7 +1127,10 @@ function App() {
   const [adminPanel, setAdminPanel] = useState<"login" | "dashboard" | null>(
     null,
   );
-  const [authMode, setAuthMode] = useState<"login" | "register">("login");
+  const [authMode, setAuthMode] = useState<
+    "login" | "register" | "forgot" | "reset"
+  >("login");
+  const [passwordResetIdentifier, setPasswordResetIdentifier] = useState("");
   const [showAuthPassword, setShowAuthPassword] = useState(false);
   const [adminNotice, setAdminNotice] = useState("");
   const [adminEditor, setAdminEditor] = useState<AdminEditor>(null);
@@ -1096,6 +1142,7 @@ function App() {
   const [liveDownloads, setLiveDownloads] = useState<DownloadItem[]>(
     downloads.map((download) => ({ ...download })),
   );
+  const [livePartners, setLivePartners] = useState<PartnerItem[]>([]);
   const [liveClub, setLiveClub] = useState<ClubSettings>({
     openingHours:
       "Aktuelle Platz- und Hallenzeiten direkt über die Buchung prüfen.",
@@ -1130,8 +1177,13 @@ function App() {
   const [liveEvents, setLiveEvents] = useState<PublicEvent[]>([]);
   const [adminEvents, setAdminEvents] = useState<PublicEvent[]>([]);
   const [contactMessages, setContactMessages] = useState<ContactMessage[]>([]);
+  const [replyingToContact, setReplyingToContact] = useState<ContactMessage | null>(null);
+  const [contactReplyText, setContactReplyText] = useState("");
+  const [contactReplyStatus, setContactReplyStatus] = useState("");
   const [tournamentInquiries, setTournamentInquiries] = useState<TournamentInquiry[]>([]);
   const [contactError, setContactError] = useState("");
+  const [partnerInquirySent, setPartnerInquirySent] = useState(false);
+  const [partnerInquiryError, setPartnerInquiryError] = useState("");
   const [tournamentFormError, setTournamentFormError] = useState("");
   const [tournamentFormSent, setTournamentFormSent] = useState(false);
   const [managedUsers, setManagedUsers] = useState<ManagedUser[]>([]);
@@ -1245,6 +1297,16 @@ function App() {
         setFeaturedContent(item as FeaturedContent);
     };
     void loadFeaturedContent();
+  }, []);
+
+  useEffect(() => {
+    const client = supabase;
+    if (!client) return;
+    const loadPartners = async () => {
+      const { data } = await client.from("club_content").select("value").eq("key", "partners").maybeSingle();
+      if (Array.isArray(data?.value?.items)) setLivePartners(data.value.items as PartnerItem[]);
+    };
+    void loadPartners();
   }, []);
 
   useEffect(() => {
@@ -1364,6 +1426,52 @@ function App() {
       return;
     }
     setFormSent(true);
+  };
+
+  const submitPartnerInquiry = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    const form = new FormData(event.currentTarget);
+    const name = String(form.get("name") ?? "").trim();
+    const email = String(form.get("email") ?? "").trim();
+    const company = String(form.get("company") ?? "").trim();
+    const message = String(form.get("message") ?? "").trim();
+    setPartnerInquiryError("");
+    const subject = "Partnerschaftsanfrage";
+    const fullMessage = `[${subject}]${company ? ` Unternehmen: ${company}` : ""}\n\n${message}`;
+    if (!supabase) {
+      window.location.href = `mailto:${club.email}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(`Name: ${name}\nE-Mail: ${email}${company ? `\nUnternehmen: ${company}` : ""}\n\n${message}`)}`;
+      setPartnerInquirySent(true);
+      return;
+    }
+    const { error } = await supabase
+      .from("contact_messages")
+      .insert({ name, email, message: fullMessage });
+    if (error) {
+      setPartnerInquiryError("Deine Anfrage konnte gerade nicht gespeichert werden. Bitte schreibe uns direkt per E-Mail.");
+      return;
+    }
+    setPartnerInquirySent(true);
+  };
+
+  const sendContactReply = async () => {
+    if (!supabase || !replyingToContact) return;
+    const text = contactReplyText.trim();
+    if (text.length < 2) {
+      setContactReplyStatus("Bitte schreibe zuerst eine Antwort.");
+      return;
+    }
+    setContactReplyStatus("Wird gesendet …");
+    const { data, error } = await supabase.functions.invoke("contact-reply", {
+      body: { contactMessageId: replyingToContact.id, message: text },
+    });
+    if (error || data?.error) {
+      setContactReplyStatus(data?.error ?? "Die E-Mail konnte nicht gesendet werden.");
+      return;
+    }
+    setContactMessages((items) => items.map((item) => item.id === replyingToContact.id ? { ...item, status: "read" } : item));
+    setReplyingToContact(null);
+    setContactReplyText("");
+    setContactReplyStatus("Antwort wurde per E-Mail gesendet.");
   };
 
   const submitTournamentInquiry = async (event: FormEvent<HTMLFormElement>) => {
@@ -1741,8 +1849,19 @@ function App() {
     event.preventDefault();
     if (!supabase) return;
     const form = new FormData(event.currentTarget);
+    const displayName = String(form.get("displayName")).trim();
     const email = String(form.get("email")).trim();
     const password = String(form.get("password"));
+    if (displayName && displayName !== adminName) {
+      const { data, error } = await supabase.functions.invoke("admin-users", {
+        body: { action: "changeOwnName", displayName },
+      });
+      if (error || data?.error) {
+        setAdminNotice(data?.error ?? "Name konnte nicht geändert werden.");
+        return;
+      }
+      setAdminName(displayName);
+    }
     if (password) {
       const { error } = await supabase.auth.updateUser({ password });
       if (error) {
@@ -2036,6 +2155,56 @@ function App() {
         ? "Fast geschafft: Bitte bestätige zuerst den Link in deiner E-Mail."
         : "Dein Mitgliederkonto wurde erstellt. Du kannst dich jetzt anmelden.",
     );
+  };
+
+  const requestPasswordReset = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    if (!supabase) {
+      setAdminNotice("Supabase ist noch nicht verbunden.");
+      return;
+    }
+    const identifier = String(new FormData(event.currentTarget).get("identifier")).trim();
+    const { data, error } = await supabase.functions.invoke(
+      "request-password-reset",
+      { body: { identifier } },
+    );
+    if (error || data?.error) {
+      setAdminNotice(data?.error ?? "Der Code konnte nicht angefordert werden.");
+      return;
+    }
+    setPasswordResetIdentifier(identifier);
+    setAuthMode("reset");
+    setAdminNotice(
+      "Wenn ein passender Zugang existiert, ist ein sechsstelliger Code unterwegs. Bitte prüfe auch den Spam-Ordner.",
+    );
+  };
+
+  const resetPasswordWithCode = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    if (!supabase) return;
+    const form = new FormData(event.currentTarget);
+    const password = String(form.get("password"));
+    if (password !== String(form.get("passwordRepeat"))) {
+      setAdminNotice("Die beiden Passwörter stimmen nicht überein.");
+      return;
+    }
+    const { data, error } = await supabase.functions.invoke(
+      "reset-password-with-code",
+      {
+        body: {
+          identifier: passwordResetIdentifier,
+          code: String(form.get("code")).trim(),
+          password,
+        },
+      },
+    );
+    if (error || data?.error) {
+      setAdminNotice(data?.error ?? "Das Passwort konnte nicht zurückgesetzt werden.");
+      return;
+    }
+    setAuthMode("login");
+    setPasswordResetIdentifier("");
+    setAdminNotice("Passwort geändert. Du kannst dich jetzt anmelden.");
   };
 
   const saveNews = async (event: FormEvent<HTMLFormElement>) => {
@@ -2373,6 +2542,36 @@ function App() {
     setAdminNotice(`${item.title} wurde von der Website entfernt.`);
   };
 
+  const savePartner = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    if (!supabase || !adminUserId) return;
+    const form = new FormData(event.currentTarget);
+    const file = form.get("logo");
+    if (!(file instanceof File) || file.size === 0 || !file.type.startsWith("image/")) {
+      setAdminNotice("Bitte ein Bild als Partnerlogo auswählen.");
+      return;
+    }
+    const path = `partners/${crypto.randomUUID()}-${file.name.toLowerCase().replace(/[^a-z0-9._-]/g, "-")}`;
+    const { error: uploadError } = await supabase.storage.from("club-media").upload(path, file, { upsert: false });
+    if (uploadError) { setAdminNotice(`Logo-Upload fehlgeschlagen: ${uploadError.message}`); return; }
+    const { data: publicUrl } = supabase.storage.from("club-media").getPublicUrl(path);
+    const item: PartnerItem = { id: crypto.randomUUID(), name: String(form.get("name")).trim(), website: String(form.get("website")).trim(), logo: publicUrl.publicUrl, note: String(form.get("note") ?? "").trim() };
+    const items = [...livePartners, item];
+    const { error } = await supabase.from("club_content").upsert({ key: "partners", value: { items }, updated_by: adminUserId });
+    if (error) { setAdminNotice(`Partner konnte nicht gespeichert werden: ${error.message}`); return; }
+    setLivePartners(items); event.currentTarget.reset(); setAdminNotice(`${item.name} ist jetzt als Partner sichtbar.`);
+  };
+
+  const deletePartner = async (item: PartnerItem) => {
+    if (!supabase || !adminUserId || !window.confirm(`${item.name} wirklich als Partner entfernen?`)) return;
+    const items = livePartners.filter((partner) => partner.id !== item.id);
+    const { error } = await supabase.from("club_content").upsert({ key: "partners", value: { items }, updated_by: adminUserId });
+    if (error) { setAdminNotice(`Partner konnte nicht entfernt werden: ${error.message}`); return; }
+    const match = item.logo.match(/\/storage\/v1\/object\/public\/club-media\/(.+)$/);
+    if (match) await supabase.storage.from("club-media").remove([match[1]]);
+    setLivePartners(items); setAdminNotice(`${item.name} wurde entfernt.`);
+  };
+
   const uploadSiteImage = async (key: SiteImageKey, file: File) => {
     if (!supabase || !adminUserId) return;
     const safeName = file.name.toLowerCase().replace(/[^a-z0-9._-]/g, "-");
@@ -2522,6 +2721,13 @@ function App() {
         save={(event) => void saveDownload(event)}
         remove={(item) => void deleteDownload(item)}
       />
+      <PartnerManager
+        open={adminEditor === "partners" && canManageGeneralContent}
+        close={() => setAdminEditor(null)}
+        items={livePartners}
+        save={(event) => void savePartner(event)}
+        remove={(item) => void deletePartner(item)}
+      />
       <SiteImageManager
         open={adminEditor === "media"}
         close={() => setAdminEditor(null)}
@@ -2571,7 +2777,17 @@ function App() {
               {label}
             </a>
           ))}
+          <details className="desktop-nav-more">
+            <summary>Mehr</summary>
+            <div>
+              <a href="/news">News</a><a href="/mitglied-werden">Mitglied werden</a><a href="/service">Downloads</a><a href="/galerie">Galerie</a><a href="/partner">Partner</a><a href="/kontakt">Kontakt</a>
+            </div>
+          </details>
         </nav>
+        <a className="mobile-header-title" href="/" aria-label="Tennisclub Trier Startseite">
+          <span>Tennisclub <em>Trier.</em></span>
+          <small>1888 e.V.</small>
+        </a>
         <div className="header-actions">
           <button
             className="icon-button search-trigger"
@@ -2878,7 +3094,18 @@ function App() {
           <BookingPortal
             userId={adminUserId}
             defaultEmail={adminEmail ?? ""}
-            role={adminRole}
+            onRequireLogin={() => {
+              setAuthMode("login");
+              setAdminNotice("");
+              setAdminPanel("login");
+            }}
+          />
+        )}
+        {currentPath === "/spielpartner" && (
+          <PartnerBoard
+            userId={adminUserId}
+            defaultEmail={adminEmail ?? ""}
+            displayName={adminName}
             onRequireLogin={() => {
               setAuthMode("login");
               setAdminNotice("");
@@ -3542,6 +3769,202 @@ function App() {
             </form>
           </div>
         </section>
+
+        <section className="section gallery-section route-galerie">
+          <div className="container">
+            <div className="section-head">
+              <p className="eyebrow">
+                <span /> TCT in Bildern
+              </p>
+              <a className="text-link" href="/teams">
+                Unsere Teams <ArrowRight size={17} />
+              </a>
+            </div>
+            <div className="gallery-intro">
+              <h2>
+                Momente, die
+                <br />
+                <em>bleiben.</em>
+              </h2>
+              <p>
+                Training, Turniere, Mannschaften und das Clubleben am
+                Moselstadion. Ein Bild anklicken, um es groß zu sehen.
+              </p>
+            </div>
+            <div className="gallery-mosaic motion">
+              {[
+                { title: "Tennis am Moselstadion", image: liveSiteImages.court },
+                { title: "Unsere Anlage", image: liveSiteImages.facility },
+                { title: "Tennishalle", image: liveSiteImages.hall },
+                { title: "Padel beim TCT", image: liveSiteImages.padel },
+                ...liveTeamGallery.slice(0, 4).map((team) => ({
+                  title: team.title,
+                  image: team.image,
+                })),
+              ].map((item, index) => (
+                <button
+                  className={`gallery-tile gallery-tile-${index + 1}`}
+                  type="button"
+                  key={`${item.title}-${index}`}
+                  onClick={() => setSelectedTeamPhoto(item)}
+                  aria-label={`${item.title} groß ansehen`}
+                >
+                  <img loading="lazy" src={item.image} alt={item.title} />
+                  <span>{item.title}</span>
+                </button>
+              ))}
+            </div>
+          </div>
+        </section>
+
+        <section className="section partner-section route-partner">
+          <div className="container partner-grid">
+            <div>
+              <p className="eyebrow">
+                <span /> Partner & Förderer
+              </p>
+              <h2>
+                Gemeinsam
+                <br />
+                <em>sichtbar.</em>
+              </h2>
+              <p className="partner-copy">
+                Gute Partnerschaften machen mehr möglich: Nachwuchs fördern,
+                Turniere gestalten und Tennis in Trier erlebbar machen.
+              </p>
+              <a className="button" href="#partner-anfrage">
+                Partnergespräch starten <ArrowRight size={18} />
+              </a>
+            </div>
+            <div className="partner-values motion">
+              <article>
+                <span>01</span>
+                <h3>Turniere & Events</h3>
+                <p>Präsenz bei besonderen Momenten auf und neben dem Platz.</p>
+              </article>
+              <article>
+                <span>02</span>
+                <h3>Jugend fördern</h3>
+                <p>Unterstützung für Training, Camps und den TCT-Nachwuchs.</p>
+              </article>
+              <article>
+                <span>03</span>
+                <h3>Clubleben stärken</h3>
+                <p>Ein lokales Engagement, das bei Mitgliedern ankommt.</p>
+              </article>
+            </div>
+          </div>
+          {livePartners.length > 0 && (
+            <div className="container public-partner-list">
+              <p className="eyebrow"><span /> Unsere Partner</p>
+              <div>{livePartners.map((item) => <a key={item.id} href={item.website} target="_blank" rel="noreferrer"><img src={item.logo} alt={item.name} />{item.note && <small>{item.note}</small>}</a>)}</div>
+            </div>
+          )}
+          <div className="container partner-inquiry-wrap" id="partner-anfrage">
+            <form className="partner-inquiry-form" onSubmit={submitPartnerInquiry}>
+              {partnerInquirySent ? (
+                <div className="success">
+                  <span>✓</span>
+                  <h3>Danke für dein Interesse.</h3>
+                  <p>Deine Partnerschaftsanfrage ist beim TCT eingegangen.</p>
+                </div>
+              ) : (
+                <>
+                  <div className="partner-inquiry-copy">
+                    <p className="eyebrow"><span /> Partnerschaft anfragen</p>
+                    <h3>Lasst uns<br /><em>etwas bewegen.</em></h3>
+                    <p>Erzähl uns kurz, wer ihr seid und wie ihr den TCT unterstützen möchtet. Der Vorstand meldet sich persönlich bei euch.</p>
+                  </div>
+                  <div className="partner-inquiry-fields">
+                    <label>Name<input required name="name" placeholder="Vor- und Nachname" /></label>
+                    <label>Unternehmen <small>optional</small><input name="company" placeholder="Name des Unternehmens" /></label>
+                    <label>E-Mail<input required type="email" name="email" placeholder="name@unternehmen.de" /></label>
+                    <label>Nachricht<textarea required name="message" rows={4} placeholder="Wofür interessiert ihr euch? Zum Beispiel Sponsoring, Event-Partnerschaft oder Jugendförderung." /></label>
+                    {partnerInquiryError && <p className="form-error">{partnerInquiryError}</p>}
+                    <button className="button button-light" type="submit">Partnerschaft anfragen <MoveRight size={18} /></button>
+                    <p className="form-note">Die Anfrage landet gesondert markiert im TCT-Postfach und wird vertraulich behandelt.</p>
+                  </div>
+                </>
+              )}
+            </form>
+          </div>
+        </section>
+
+        <section className="section imprint-section route-impressum">
+          <div className="container legal-layout">
+            <div>
+              <p className="eyebrow">
+                <span /> Rechtliches
+              </p>
+              <h2>
+                Klar.
+                <br />
+                <em>Erreichbar.</em>
+              </h2>
+            </div>
+            <div className="legal-content">
+              <article>
+                <h3>Angaben zum Verein</h3>
+                <p>
+                  Tennisclub Trier 1888 e.V.<br />
+                  Am Stadion 1<br />
+                  54292 Trier
+                </p>
+              </article>
+              <article>
+                <h3>Vertretung</h3>
+                <p>
+                  Der Verein wird durch seinen Vorstand vertreten. 1.
+                  Vorsitzender: Alexander Jelen. 2. Vorsitzender: Roland Mohr.
+                </p>
+              </article>
+              <article>
+                <h3>Kontakt</h3>
+                <p>
+                  Telefon: <a href={`tel:${club.phone.replaceAll(" ", "")}`}>{club.phone}</a>
+                  <br />
+                  E-Mail: <a href={`mailto:${club.email}`}>{club.email}</a>
+                </p>
+              </article>
+              <article>
+                <h3>Verantwortung für Inhalte</h3>
+                <p>
+                  Verantwortlich für die Inhalte dieser Website ist der
+                  Tennisclub Trier 1888 e.V. Angaben zum Verein werden
+                  regelmäßig geprüft und bei Änderungen aktualisiert.
+                </p>
+              </article>
+              <article>
+                <h3>Streitbeilegung</h3>
+                <p>
+                  Der Tennisclub Trier 1888 e.V. nimmt nicht an einem
+                  Streitbeilegungsverfahren vor einer
+                  Verbraucherschlichtungsstelle teil und ist hierzu auch nicht
+                  verpflichtet.
+                </p>
+              </article>
+              <p className="legal-note">
+                Vor dem finalen Livegang sollte der Vorstand die Angaben zur
+                Vertretung sowie mögliche Register- und Steuerangaben nochmals
+                verbindlich prüfen.
+              </p>
+            </div>
+          </div>
+        </section>
+        {livePartners.length > 0 && (
+          <section className="home-partner-strip route-home" aria-labelledby="home-partners-title">
+            <div className="container">
+              <div>
+                <p className="eyebrow"><span /> Gemeinsam für Trier</p>
+                <h2 id="home-partners-title">Unsere Partner.</h2>
+              </div>
+              <div className="home-partner-logos">
+                {livePartners.slice(0, 6).map((item) => <a key={item.id} href={item.website} target="_blank" rel="noreferrer"><img src={item.logo} alt={item.name} /></a>)}
+              </div>
+              <a className="text-link" href="/partner">Partner werden <ArrowRight size={17} /></a>
+            </div>
+          </section>
+        )}
       </div>
 
       <footer className="footer">
@@ -3562,17 +3985,19 @@ function App() {
           <div className="footer-bottom">
             <span>© {new Date().getFullYear()} Tennisclub Trier 1888 e.V.</span>
             <div>
-              <a href="/kontakt">Impressum</a>
-              <a href="#datenschutz" onClick={() => setPrivacyOpen(true)}>
+              <a href="/impressum">Impressum</a>
+              <a href="/datenschutz" onClick={() => setPrivacyOpen(true)}>
                 Datenschutz
               </a>
+              <a href="/galerie">Galerie</a>
+              <a href="/partner">Partner</a>
               <a href="/service">Vereinsunterlagen</a>
             </div>
           </div>
         </div>
       </footer>
 
-      {privacyOpen && (
+      {(privacyOpen || currentPath === "/datenschutz") && (
         <div
           className="privacy-overlay"
           role="dialog"
@@ -3585,7 +4010,11 @@ function App() {
               type="button"
               onClick={() => {
                 setPrivacyOpen(false);
-                window.history.replaceState(null, "", "#top");
+                if (currentPath === "/datenschutz") {
+                  window.location.assign("/");
+                } else {
+                  window.history.replaceState(null, "", "#top");
+                }
               }}
               aria-label="Datenschutzerklärung schließen"
             >
@@ -3662,8 +4091,10 @@ function App() {
                   Der Adminbereich ist ausschließlich für vom Verein angelegte
                   Redaktionskonten bestimmt. Dabei verarbeiten wir Name,
                   Benutzername, E-Mail-Adresse, Rolle, Anmeldeinformationen
-                  sowie Sicherheits- und Änderungsprotokolle. Passwörter werden
-                  nicht im Klartext gespeichert. Das Änderungslog dokumentiert,
+                  sowie Sicherheits- und Änderungsprotokolle. Für einen
+                  Passwort-Reset speichern wir einen zeitlich begrenzten,
+                  gehashten Bestätigungscode. Passwörter werden nicht im
+                  Klartext gespeichert. Das Änderungslog dokumentiert,
                   welches Konto wann welchen Website-Inhalt geändert hat.
                   Grundlage sind das berechtigte Interesse an einer sicheren
                   Verwaltung und die Nachvollziehbarkeit von Veröffentlichungen
@@ -3702,7 +4133,30 @@ function App() {
               </section>
 
               <section>
-                <h2>7. Bilder, Social Media und Cookies</h2>
+                <h2>7. Wetterdaten (Open-Meteo)</h2>
+                <p>
+                  Auf der Buchungsseite zeigen wir auf Wunsch aktuelle
+                  Wetterdaten für Trier an. Dafür ruft dein Browser die
+                  Schnittstelle von Open-Meteo mit dem Standort der Anlage ab.
+                  Dabei werden technisch bedingt Verbindungsdaten, insbesondere
+                  deine IP-Adresse, an Open-Meteo übermittelt. Wir legen dafür
+                  kein Wetter-Profil an und verwenden keine zusätzlichen
+                  Cookies. Rechtsgrundlage ist unser berechtigtes Interesse an
+                  einer hilfreichen Buchungsplanung (Art. 6 Abs. 1 lit. f
+                  DSGVO). Weitere Informationen bietet{" "}
+                  <a
+                    href="https://open-meteo.com/en/docs"
+                    target="_blank"
+                    rel="noreferrer"
+                  >
+                    Open-Meteo
+                  </a>
+                  .
+                </p>
+              </section>
+
+              <section>
+                <h2>8. Bilder, Social Media und Cookies</h2>
                 <p>
                   Mannschafts- und Veranstaltungsbilder werden nur nach Freigabe
                   durch den Verein veröffentlicht. Bei berechtigten Anliegen zur
@@ -3717,7 +4171,7 @@ function App() {
               </section>
 
               <section>
-                <h2>8. Speicherdauer und Empfänger</h2>
+                <h2>9. Speicherdauer und Empfänger</h2>
                 <p>
                   Wir speichern Daten nur so lange, wie sie für den jeweiligen
                   Zweck erforderlich sind. Administratoren löschen nicht mehr
@@ -3730,7 +4184,7 @@ function App() {
               </section>
 
               <section>
-                <h2>9. Deine Rechte</h2>
+                <h2>10. Deine Rechte</h2>
                 <p>
                   Du hast das Recht auf Auskunft, Berichtigung, Löschung,
                   Einschränkung der Verarbeitung, Datenübertragbarkeit und
@@ -3772,60 +4226,52 @@ function App() {
             <p className="eyebrow">
               <span /> Navigation
             </p>
-            {navLinks.map(([label, href], i) => (
-              <a href={isFocusedPage && href.startsWith("#") ? `/${href}` : href} onClick={() => setMenuOpen(false)} key={href}>
-                <span>0{i + 1}</span>
-                {label}
-                <ArrowRight size={24} />
-              </a>
-            ))}
-            <button
-              className="menu-admin"
-              onClick={() => {
-                setMenuOpen(false);
-                if (adminUserId) {
-                  if (editorialRoles.includes(adminRole)) setAdminPanel("dashboard");
-                  else setAccountOpen(true);
-                  return;
-                }
-                setAuthMode("register");
-                setAdminNotice("");
-                setAdminPanel("login");
-                window.history.replaceState(null, "", "#registrieren");
-              }}
-            >
-              <LockKeyhole size={17} />
-              {adminUserId ? "Mein Konto" : "Registrieren"} <ArrowRight size={17} />
-            </button>
-            {!adminUserId && (
+            <div className="mobile-menu-account">
               <button
-                className="menu-member"
+                className="menu-admin"
                 onClick={() => {
                   setMenuOpen(false);
-                  setAuthMode("login");
+                  if (adminUserId) {
+                    if (editorialRoles.includes(adminRole)) setAdminPanel("dashboard");
+                    else setAccountOpen(true);
+                    return;
+                  }
+                  setAuthMode("register");
                   setAdminNotice("");
                   setAdminPanel("login");
+                  window.history.replaceState(null, "", "#registrieren");
                 }}
               >
-                Anmelden <ArrowRight size={18} />
+                <LockKeyhole size={16} />
+                {adminUserId ? "Mein Konto" : "Registrieren"} <ArrowRight size={16} />
               </button>
-            )}
-            {adminUserId && (
-              <button
-                className="menu-signout"
-                type="button"
-                onClick={() => void signOutAccount()}
-              >
-                Abmelden <MoveRight size={18} />
-              </button>
-            )}
-            <a
-              className="menu-book"
-              href="/booking"
-              onClick={() => setMenuOpen(false)}
-            >
-              Platz buchen <ArrowRight size={17} />
+              {!adminUserId ? (
+                <button className="menu-member" onClick={() => { setMenuOpen(false); setAuthMode("login"); setAdminNotice(""); setAdminPanel("login"); }}>
+                  Anmelden <ArrowRight size={16} />
+                </button>
+              ) : (
+                <button className="menu-signout" type="button" onClick={() => void signOutAccount()}>
+                  Abmelden <MoveRight size={16} />
+                </button>
+              )}
+            </div>
+            <a className="menu-book" href="/booking" onClick={() => setMenuOpen(false)}>
+              Platz buchen <ArrowRight size={18} />
             </a>
+            <div className="mobile-menu-groups">
+              {mobileNavGroups.map((group) => (
+                <section className="mobile-menu-group" key={group.label}>
+                  <p>{group.label}</p>
+                  <div>
+                    {group.links.map(([label, href]) => (
+                      <a href={href} onClick={() => setMenuOpen(false)} key={`${group.label}-${href}`}>
+                        {label}<ArrowRight size={15} />
+                      </a>
+                    ))}
+                  </div>
+                </section>
+              ))}
+            </div>
           </div>
         </div>
       )}
@@ -3876,19 +4322,35 @@ function App() {
               <span /> Geschützter Bereich
             </p>
             <h2>
-              {authMode === "login" ? "Willkommen" : "Neu"}
+              {authMode === "login"
+                ? "Willkommen"
+                : authMode === "register"
+                  ? "Neu"
+                  : "Passwort"}
               <br />
-              <em>{authMode === "login" ? "zurück." : "dabei."}</em>
+              <em>
+                {authMode === "login"
+                  ? "zurück."
+                  : authMode === "register"
+                    ? "dabei."
+                    : "neu."}
+              </em>
             </h2>
             <p>
               {authMode === "login"
                 ? "Melde dich mit deinem TCT-Mitgliederkonto an und verwalte deine persönlichen Angaben und Buchungen."
-                : "Erstelle dein persönliches TCT-Mitgliederkonto. Für die spätere Platzbuchung werden nur echte Mitgliederdaten freigeschaltet."}
+                : authMode === "register"
+                  ? "Erstelle dein persönliches TCT-Mitgliederkonto. Für die spätere Platzbuchung werden nur echte Mitgliederdaten freigeschaltet."
+                  : authMode === "forgot"
+                    ? "Wir schicken dir einen eigenen sechsstelligen TCT-Code, damit du sicher ein neues Passwort vergeben kannst."
+                    : "Gib den Code aus deiner TCT-E-Mail ein und vergib anschließend ein neues Passwort."}
             </p>
-            <p className="auth-migration-note">
-              Du hattest bereits ein Konto auf der alten TCT-Seite? Bitte erstelle
-              einmalig ein neues Konto für diese Website.
-            </p>
+            {(authMode === "login" || authMode === "register") && (
+              <p className="auth-migration-note">
+                Du hattest bereits ein Konto auf der alten TCT-Seite? Bitte erstelle
+                einmalig ein neues Konto für diese Website.
+              </p>
+            )}
             {authMode === "login" ? (
             <form onSubmit={loginAdmin}>
               <label>
@@ -3922,8 +4384,18 @@ function App() {
               <button className="button button-light" type="submit">
                 Anmelden <ArrowRight size={17} />
               </button>
+              <button
+                className="auth-forgot"
+                type="button"
+                onClick={() => {
+                  setAuthMode("forgot");
+                  setAdminNotice("");
+                }}
+              >
+                Passwort vergessen?
+              </button>
             </form>
-            ) : (
+            ) : authMode === "register" ? (
               <form onSubmit={registerMember}>
                 <label>
                   Vor- und Nachname
@@ -3953,19 +4425,98 @@ function App() {
                   Konto erstellen <ArrowRight size={17} />
                 </button>
               </form>
+            ) : authMode === "forgot" ? (
+              <form onSubmit={requestPasswordReset}>
+                <label>
+                  Benutzername oder E-Mail
+                  <input
+                    required
+                    name="identifier"
+                    type="text"
+                    autoComplete="username"
+                    placeholder="max.mustermann oder max@beispiel.de"
+                  />
+                </label>
+                <button className="button button-light" type="submit">
+                  Code anfordern <ArrowRight size={17} />
+                </button>
+                <p className="form-note">
+                  Aus Sicherheitsgründen zeigen wir nicht an, ob ein Zugang
+                  existiert. Schau auch in deinen Spam-Ordner.
+                </p>
+              </form>
+            ) : (
+              <form onSubmit={resetPasswordWithCode}>
+                <label>
+                  Sechsstelliger Code
+                  <input
+                    required
+                    name="code"
+                    inputMode="numeric"
+                    pattern="\d{6}"
+                    maxLength={6}
+                    placeholder="123456"
+                  />
+                </label>
+                <label>
+                  Neues Passwort <small>mindestens 8 Zeichen</small>
+                  <input
+                    required
+                    name="password"
+                    type={showAuthPassword ? "text" : "password"}
+                    minLength={8}
+                    autoComplete="new-password"
+                  />
+                  <button
+                    className="auth-password-toggle"
+                    type="button"
+                    onClick={() => setShowAuthPassword((show) => !show)}
+                    aria-label={showAuthPassword ? "Passwort verbergen" : "Passwort anzeigen"}
+                  >
+                    {showAuthPassword ? <EyeOff size={16} /> : <Eye size={16} />}
+                  </button>
+                </label>
+                <label>
+                  Passwort wiederholen
+                  <input
+                    required
+                    name="passwordRepeat"
+                    type={showAuthPassword ? "text" : "password"}
+                    minLength={8}
+                    autoComplete="new-password"
+                  />
+                </label>
+                <button className="button button-light" type="submit">
+                  Passwort speichern <Check size={17} />
+                </button>
+              </form>
             )}
-            <button
-              className="auth-switch"
-              type="button"
-              onClick={() => {
-                setAuthMode((mode) => (mode === "login" ? "register" : "login"));
-                setAdminNotice("");
-              }}
-            >
-              {authMode === "login"
-                ? "Noch kein Konto? Jetzt registrieren"
-                : "Schon registriert? Jetzt anmelden"}
-            </button>
+            {authMode === "login" || authMode === "register" ? (
+              <button
+                className="auth-switch"
+                type="button"
+                onClick={() => {
+                  setAuthMode((mode) => (mode === "login" ? "register" : "login"));
+                  setAdminNotice("");
+                }}
+              >
+                {authMode === "login"
+                  ? "Noch kein Konto? Jetzt registrieren"
+                  : "Schon registriert? Jetzt anmelden"}
+              </button>
+            ) : (
+              <button
+                className="auth-switch"
+                type="button"
+                onClick={() => {
+                  setAuthMode("login");
+                  setPasswordResetIdentifier("");
+                  setAdminNotice("");
+                }}
+              >
+                Zurück zur Anmeldung
+              </button>
+            )}
             <small>
               {supabase
                 ? "Mit Supabase Auth verbunden."
@@ -4025,6 +4576,11 @@ function App() {
             {canManageGeneralContent && (
               <a onClick={() => setAdminEditor("downloads")}>
                 <FileText size={18} /> PDFs &amp; Downloads
+              </a>
+            )}
+            {canManageGeneralContent && (
+              <a onClick={() => setAdminEditor("partners")}>
+                <UsersRound size={18} /> Partner
               </a>
             )}
             {canManageInbox && (
@@ -4150,6 +4706,13 @@ function App() {
                       Hallenpreise, Aufnahmeantrag und weitere Dateien
                     </small>
                   </span>
+                  <ArrowRight size={18} />
+                </button>
+              )}
+              {canManageGeneralContent && (
+                <button className="admin-task" onClick={() => setAdminEditor("partners")}>
+                  <UsersRound size={19} />
+                  <span><b>Partner verwalten</b><small>Logo, Website und Sponsoren sichtbar machen</small></span>
                   <ArrowRight size={18} />
                 </button>
               )}
@@ -5187,11 +5750,16 @@ function App() {
                     </header>
                     {message.message && <p>{message.message}</p>}
                     <footer>
-                      <a
-                        href={`mailto:${message.email}?subject=${encodeURIComponent("Deine Anfrage beim Tennisclub Trier")}`}
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setReplyingToContact(message);
+                          setContactReplyText(`Hallo ${message.name},\n\nvielen Dank für deine Anfrage beim Tennisclub Trier.\n\n`);
+                          setContactReplyStatus("");
+                        }}
                       >
                         Antworten <ArrowRight size={16} />
-                      </a>
+                      </button>
                       {message.status === "new" && (
                         <button
                           onClick={() =>
@@ -5211,6 +5779,19 @@ function App() {
                         </button>
                       )}
                     </footer>
+                    {replyingToContact?.id === message.id && (
+                      <div className="contact-reply-box">
+                        <label>
+                          Antwort an {message.email}
+                          <textarea value={contactReplyText} onChange={(event) => setContactReplyText(event.target.value)} rows={6} maxLength={5000} autoFocus />
+                        </label>
+                        {contactReplyStatus && <p>{contactReplyStatus}</p>}
+                        <div>
+                          <button type="button" onClick={() => { setReplyingToContact(null); setContactReplyStatus(""); }}>Abbrechen</button>
+                          <button className="button button-light" type="button" onClick={() => void sendContactReply()}>E-Mail senden <MoveRight size={16} /></button>
+                        </div>
+                      </div>
+                    )}
                   </article>
                 ))
               ) : (
@@ -5500,6 +6081,16 @@ function App() {
               ändern. Nach einer E-Mail-Änderung bitte erneut anmelden.
             </p>
             <form onSubmit={changeOwnCredentials}>
+              <label>
+                Name
+                <input
+                  required
+                  name="displayName"
+                  minLength={2}
+                  maxLength={100}
+                  defaultValue={adminName}
+                />
+              </label>
               <label>
                 E-Mail
                 <input

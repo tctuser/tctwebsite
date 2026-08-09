@@ -34,10 +34,27 @@ type MyBooking = {
   partner_name: string | null;
   amount_cents: number;
   booking_email: string | null;
+  recurring_group_id: string | null;
   status: "confirmed" | "cancelled";
   courts: { name: string; kind: "tennis" | "padel" }[];
 };
-type PendingSlot = { court: Court; start: Date };
+type WaitlistEntry = {
+  id: string;
+  court_id: string;
+  starts_at: string;
+  ends_at: string;
+  courts: { name: string }[];
+};
+type PendingSlot = { court: Court; start: Date; end?: Date };
+type BookingRules = {
+  advance_days: number;
+  max_active_bookings: number;
+  max_weekly_bookings: number;
+  max_recurring_weeks: number;
+  cancellation_hours: number;
+};
+type UpcomingEvent = { title: string; starts_at: string | null; category: string | null };
+type ClubWeather = { temperature: number; wind: number; code: number };
 
 const toDateKey = (date: Date) => {
   const year = date.getFullYear();
@@ -46,6 +63,16 @@ const toDateKey = (date: Date) => {
   return `${year}-${month}-${day}`;
 };
 const slotDate = (day: string, hour: number) => new Date(`${day}T${String(hour).padStart(2, "0")}:00:00`);
+const weatherLabel = (code: number) => {
+  if (code === 0) return "Sonnig";
+  if ([1, 2].includes(code)) return "Heiter";
+  if ([3, 45, 48].includes(code)) return "Bewölkt";
+  if ([51, 53, 55, 56, 57].includes(code)) return "Nieseln";
+  if ([61, 63, 65, 66, 67, 80, 81, 82].includes(code)) return "Regnerisch";
+  if ([71, 73, 75, 77, 85, 86].includes(code)) return "Schnee";
+  if ([95, 96, 99].includes(code)) return "Gewitter";
+  return "Wetter folgt";
+};
 const formatDay = (day: string) =>
   new Intl.DateTimeFormat("de-DE", {
     weekday: "long",
@@ -63,12 +90,10 @@ const bookingPrice = (booking: MyBooking) => {
 export function BookingPortal({
   userId,
   defaultEmail,
-  role,
   onRequireLogin,
 }: {
   userId: string | null;
   defaultEmail: string;
-  role: string;
   onRequireLogin: () => void;
 }) {
   const [day, setDay] = useState(() => toDateKey(new Date()));
@@ -76,20 +101,25 @@ export function BookingPortal({
   const [courts, setCourts] = useState<Court[]>([]);
   const [schedule, setSchedule] = useState<ScheduleItem[]>([]);
   const [myBookings, setMyBookings] = useState<MyBooking[]>([]);
+  const [myWaitlist, setMyWaitlist] = useState<WaitlistEntry[]>([]);
   const [pending, setPending] = useState<PendingSlot | null>(null);
-  const [selectedCourtIds, setSelectedCourtIds] = useState<string[]>([]);
+  const [waitlistSlot, setWaitlistSlot] = useState<PendingSlot | null>(null);
   const [minutes, setMinutes] = useState(60);
+  const [repeatWeeks, setRepeatWeeks] = useState(1);
   const [guestName, setGuestName] = useState("");
   const [bookingEmail, setBookingEmail] = useState(defaultEmail);
   const [deliveryStatus, setDeliveryStatus] = useState("");
   const [step, setStep] = useState<"edit" | "confirm" | "success">("edit");
   const [notice, setNotice] = useState("");
   const [loading, setLoading] = useState(true);
+  const [rules, setRules] = useState<BookingRules | null>(null);
+  const [nextEvent, setNextEvent] = useState<UpcomingEvent | null>(null);
+  const [weather, setWeather] = useState<ClubWeather | null>(null);
 
   const loadSchedule = async () => {
     if (!supabase) return;
     setLoading(true);
-    const [{ data: courtData }, { data: scheduleData, error }] = await Promise.all([
+    const [{ data: courtData }, { data: scheduleData, error }, { data: rulesData }, { data: nextEventData }] = await Promise.all([
       supabase
         .from("courts")
         .select("id,name,kind,area,sort_order,active")
@@ -100,9 +130,13 @@ export function BookingPortal({
         target_day: day,
         requested_kind: kind,
       }),
+      supabase.from("booking_rules").select("advance_days,max_active_bookings,max_weekly_bookings,max_recurring_weeks,cancellation_hours").eq("id", true).maybeSingle(),
+      supabase.from("events").select("title,starts_at,category").eq("status", "published").gte("starts_at", new Date().toISOString()).order("starts_at").limit(1).maybeSingle(),
     ]);
     if (courtData) setCourts(courtData as Court[]);
     if (scheduleData) setSchedule(scheduleData as ScheduleItem[]);
+    if (rulesData) setRules(rulesData as BookingRules);
+    if (nextEventData) setNextEvent(nextEventData as UpcomingEvent);
     if (error) setNotice(`Kalender konnte nicht geladen werden: ${error.message}`);
     setLoading(false);
   };
@@ -110,11 +144,12 @@ export function BookingPortal({
   const loadMyBookings = async () => {
     if (!supabase || !userId) {
       setMyBookings([]);
+      setMyWaitlist([]);
       return;
     }
     const { data, error } = await supabase
       .from("court_bookings")
-      .select("id,court_id,starts_at,ends_at,partner_name,amount_cents,booking_email,status,courts(name,kind)")
+      .select("id,court_id,starts_at,ends_at,partner_name,amount_cents,booking_email,recurring_group_id,status,courts(name,kind)")
       .eq("user_id", userId)
       .eq("status", "confirmed")
       .gte("ends_at", new Date().toISOString())
@@ -125,6 +160,12 @@ export function BookingPortal({
       return;
     }
     setMyBookings((data ?? []) as MyBooking[]);
+    const { data: waitlistData } = await supabase
+      .from("court_waitlist")
+      .select("id,court_id,starts_at,ends_at,courts(name)")
+      .order("starts_at")
+      .limit(12);
+    setMyWaitlist((waitlistData ?? []) as WaitlistEntry[]);
   };
 
   useEffect(() => {
@@ -136,10 +177,28 @@ export function BookingPortal({
   useEffect(() => {
     if (defaultEmail) setBookingEmail(defaultEmail);
   }, [defaultEmail]);
+  useEffect(() => {
+    const controller = new AbortController();
+    const loadWeather = async () => {
+      try {
+        const response = await fetch("https://api.open-meteo.com/v1/forecast?latitude=49.7499&longitude=6.6371&current=temperature_2m,weather_code,wind_speed_10m&timezone=Europe%2FBerlin", { signal: controller.signal });
+        const data = await response.json();
+        if (response.ok && data.current) {
+          setWeather({ temperature: Math.round(data.current.temperature_2m), wind: Math.round(data.current.wind_speed_10m), code: Number(data.current.weather_code) });
+        }
+      } catch (error) {
+        if ((error as DOMException).name !== "AbortError") setWeather(null);
+      }
+    };
+    void loadWeather();
+    const refreshInterval = window.setInterval(() => void loadWeather(), 15 * 60 * 1000);
+    return () => {
+      controller.abort();
+      window.clearInterval(refreshInterval);
+    };
+  }, []);
 
   const visibleCourts = courts.filter((court) => court.kind === kind);
-  const canBookCourtGroups = ["management", "admin", "tournament_manager", "team_manager"].includes(role);
-  const selectedCourts = visibleCourts.filter((court) => selectedCourtIds.includes(court.id));
   const selectedEnd = pending ? new Date(pending.start.getTime() + minutes * 60_000) : null;
   const pendingPrice =
     pending?.court.kind === "padel"
@@ -155,12 +214,6 @@ export function BookingPortal({
         new Date(item.ends_at) > start,
     );
   };
-  const courtIsFreeForDuration = (courtId: string, start: Date, duration: number) => {
-    const end = new Date(start.getTime() + duration * 60_000);
-    return !schedule.some(
-      (item) => item.court_id === courtId && new Date(item.starts_at) < end && new Date(item.ends_at) > start,
-    );
-  };
   const freeSlots = useMemo(
     () =>
       visibleCourts.reduce(
@@ -170,6 +223,20 @@ export function BookingPortal({
       ),
     [visibleCourts, schedule, day],
   );
+  const weeklyBookings = useMemo(() => {
+    const now = new Date();
+    const weekday = (now.getDay() + 6) % 7;
+    const weekStart = new Date(now);
+    weekStart.setDate(now.getDate() - weekday);
+    weekStart.setHours(0, 0, 0, 0);
+    const weekEnd = new Date(weekStart);
+    weekEnd.setDate(weekStart.getDate() + 7);
+    return myBookings.filter((booking) => {
+      const startsAt = new Date(booking.starts_at);
+      return startsAt >= weekStart && startsAt < weekEnd;
+    }).length;
+  }, [myBookings]);
+  const weeklyFree = Math.max(0, (rules?.max_weekly_bookings ?? 3) - weeklyBookings);
 
   const changeDay = (offset: number) => {
     const next = new Date(`${day}T12:00:00`);
@@ -184,8 +251,8 @@ export function BookingPortal({
       return;
     }
     setPending({ court, start: slotDate(day, hour) });
-    setSelectedCourtIds([court.id]);
     setMinutes(60);
+    setRepeatWeeks(1);
     setGuestName("");
     setBookingEmail(defaultEmail);
     setDeliveryStatus("");
@@ -193,15 +260,30 @@ export function BookingPortal({
     setNotice("");
   };
 
+  const openWaitlist = (court: Court, hour: number) => {
+    if (!userId) {
+      setNotice("Bitte melde dich an, um dich auf die Warteliste zu setzen.");
+      onRequireLogin();
+      return;
+    }
+    const start = slotDate(day, hour);
+    const existingBooking = busyAt(court.id, start);
+    setWaitlistSlot({
+      court,
+      start,
+      end: existingBooking ? new Date(existingBooking.ends_at) : new Date(start.getTime() + 60 * 60_000),
+    });
+    setNotice("");
+  };
+
   const book = async () => {
     if (!supabase || !pending) return;
-    const courtIds = selectedCourtIds.length ? selectedCourtIds : [pending.court.id];
-    const isGroupBooking = courtIds.length > 1;
-    const { data, error } = isGroupBooking
-      ? await supabase.rpc("book_multiple_courts", {
-          target_court_ids: courtIds,
-          requested_start: pending.start.toISOString(),
+    const { data, error } = repeatWeeks > 1
+      ? await supabase.rpc("book_recurring_courts", {
+          target_court_id: pending.court.id,
+          first_start: pending.start.toISOString(),
           requested_minutes: minutes,
+          weeks: repeatWeeks,
           guest_name: guestName.trim() || null,
           requested_email: bookingEmail.trim(),
         })
@@ -224,26 +306,17 @@ export function BookingPortal({
       setStep("edit");
       return;
     }
-    const bookings = (isGroupBooking ? data : [data]) as Array<{ id: string }>;
-    const booking = bookings[0];
+    const booking = (Array.isArray(data) ? data[0] : data) as { id: string };
     const { data: delivery, error: deliveryError } = await supabase.functions.invoke(
       "booking-confirmation",
       { body: { bookingId: booking.id } },
     );
-    if (bookings.length > 1) {
-      await Promise.all(
-        bookings.slice(1).map((item) =>
-          supabase!.functions.invoke("booking-confirmation", { body: { bookingId: item.id } }),
-        ),
-      );
-    }
-    setDeliveryStatus(
-      deliveryError || delivery?.error
-        ? `Die Buchung ist gespeichert, aber die Bestätigungs-E-Mail konnte nicht gesendet werden: ${delivery?.error ?? deliveryError?.message ?? "Unbekannter Fehler"}`
-        : delivery?.skipped
-          ? "Die Buchung ist gespeichert. Der automatische E-Mail-Versand wird noch eingerichtet."
-          : `Bestätigung wurde an ${bookingEmail.trim()} gesendet.`,
-    );
+    const emailStatus = deliveryError || delivery?.error
+      ? `Die Buchung ist gespeichert, aber die Bestätigungs-E-Mail konnte nicht gesendet werden: ${delivery?.error ?? deliveryError?.message ?? "Unbekannter Fehler"}`
+      : delivery?.skipped
+        ? "Die Buchung ist gespeichert. Der automatische E-Mail-Versand wird noch eingerichtet."
+        : `Bestätigung wurde an ${bookingEmail.trim()} gesendet.`;
+    setDeliveryStatus(repeatWeeks > 1 ? `${repeatWeeks} wöchentliche Termine wurden gespeichert. ${emailStatus}` : emailStatus);
     setStep("success");
     await Promise.all([loadSchedule(), loadMyBookings()]);
   };
@@ -255,13 +328,6 @@ export function BookingPortal({
     }
     setNotice("");
     setStep("confirm");
-  };
-
-  const toggleCourt = (courtId: string) => {
-    setSelectedCourtIds((ids) => {
-      if (ids.includes(courtId)) return ids.length === 1 ? ids : ids.filter((id) => id !== courtId);
-      return ids.length >= 4 ? ids : [...ids, courtId];
-    });
   };
 
   const cancelBooking = async (id: string) => {
@@ -285,7 +351,42 @@ export function BookingPortal({
           ? "Buchung wurde storniert. Der automatische E-Mail-Versand wird noch eingerichtet."
           : "Buchung wurde storniert. Die Bestätigung wurde per E-Mail gesendet.",
     );
+    await supabase.functions.invoke("waitlist-notification", {
+      body: { bookingId: booking.id },
+    });
     await Promise.all([loadSchedule(), loadMyBookings()]);
+  };
+
+  const joinWaitlist = async () => {
+    if (!supabase || !waitlistSlot || !userId || !defaultEmail) return;
+    const { error } = await supabase.from("court_waitlist").insert({
+      user_id: userId,
+      court_id: waitlistSlot.court.id,
+      starts_at: waitlistSlot.start.toISOString(),
+      ends_at: (waitlistSlot.end ?? new Date(waitlistSlot.start.getTime() + 60 * 60_000)).toISOString(),
+      booking_email: defaultEmail,
+    });
+    if (error) {
+      setNotice(
+        error.code === "23505"
+          ? "Du bist für diesen Termin bereits auf der Warteliste."
+          : "Warteliste konnte nicht gespeichert werden: " + error.message,
+      );
+      return;
+    }
+    setWaitlistSlot(null);
+    setNotice("Du bist auf der Warteliste. Sobald der Platz frei wird, erhältst du eine E-Mail.");
+    await loadMyBookings();
+  };
+
+  const removeWaitlistEntry = async (id: string) => {
+    if (!supabase) return;
+    const { error } = await supabase.from("court_waitlist").delete().eq("id", id);
+    if (error) {
+      setNotice(error.message);
+      return;
+    }
+    setMyWaitlist((items) => items.filter((entry) => entry.id !== id));
   };
 
   return (
@@ -318,6 +419,36 @@ export function BookingPortal({
           ))}
         </div>
 
+        <section className="club-today" aria-labelledby="club-today-title">
+          <div className="club-today-heading">
+            <p className="eyebrow"><span /> Live vom Moselstadion</p>
+            <h3 id="club-today-title">Heute im Club.</h3>
+          </div>
+          <div className="club-today-grid">
+            <article><small>WETTER IN TRIER</small><b>{weather ? `${weather.temperature}°` : "–"}</b><span>{weather ? `${weatherLabel(weather.code)} · Wind ${weather.wind} km/h` : "Wird geladen …"}</span></article>
+            <article><small>FREIE ZEITEN</small><b>{loading ? "–" : freeSlots}</b><span>{kind === "tennis" ? "heute auf den Tennisplätzen" : "heute auf dem Padel Court"}</span></article>
+            <article><small>BUCHUNGSREGEL</small><b>{rules?.max_active_bookings ?? 3} Termine</b><span>{rules ? `${rules.advance_days} Tage im Voraus · Storno bis ${rules.cancellation_hours} Std.` : "Wird geladen …"}</span></article>
+            <article><small>NÄCHSTER CLUBTERMIN</small><b>{nextEvent?.title ?? "Aktuell kein Termin"}</b><span>{nextEvent?.starts_at ? new Intl.DateTimeFormat("de-DE", { day: "2-digit", month: "short" }).format(new Date(nextEvent.starts_at)) : "Alle Termine im Turnierkalender"}</span></article>
+          </div>
+        </section>
+
+        {userId && (
+          <section className="booking-quota" aria-label="Dein Buchungskontingent">
+            <div>
+              <p className="kicker">DEIN WOCHENKONTINGENT</p>
+              <b>{weeklyFree} frei</b>
+              <span>
+                {weeklyBookings} von {rules?.max_weekly_bookings ?? 3} Buchungen
+                in dieser Woche genutzt
+              </span>
+            </div>
+            <p>
+              Reguläre Mitglieder können pro Woche bis zu{" "}
+              {rules?.max_weekly_bookings ?? 3} Termine buchen.
+            </p>
+          </section>
+        )}
+
         <div className="booking-calendar">
           <header>
             <button aria-label="Vorheriger Tag" onClick={() => changeDay(-1)}><ArrowLeft size={19} /></button>
@@ -344,7 +475,22 @@ export function BookingPortal({
                   <time>{String(hour).padStart(2, "0")}:00</time>
                   {visibleCourts.map((court) => {
                     const busy = busyAt(court.id, slotDate(day, hour));
-                    return busy ? <span className={`booking-slot is-busy ${busy.is_own ? "is-own" : ""}`} key={court.id}>{busy.is_own ? "Deine Buchung" : busy.source === "block" ? busy.label : "Belegt"}</span> : <button className="booking-slot is-free" key={court.id} onClick={() => openSlot(court, hour)}>Frei</button>;
+                    if (busy) {
+                      return busy.is_own ? (
+                        <span className="booking-slot is-busy is-own" key={court.id}>
+                          Deine Buchung
+                        </span>
+                      ) : (
+                        <button
+                          className="booking-slot is-busy is-waitlist"
+                          key={court.id}
+                          onClick={() => openWaitlist(court, hour)}
+                        >
+                          Warteliste
+                        </button>
+                      );
+                    }
+                    return <button className="booking-slot is-free" key={court.id} onClick={() => openSlot(court, hour)}>Frei</button>;
                   })}
                 </div>
               ))}
@@ -356,8 +502,30 @@ export function BookingPortal({
         {userId && (
           <div className="my-bookings">
             <div><p className="eyebrow"><span /> Mitgliederkonto</p><h3>Meine Buchungen.</h3></div>
-            {myBookings.length ? <div className="my-booking-list">{myBookings.map((booking) => <article key={booking.id}><div><small>GEBUCHTER PLATZ</small><b>{booking.courts[0]?.name ?? "Court"}</b><span>{booking.courts[0]?.kind === "padel" ? "Padel" : "Tennis"}</span></div><p><CalendarDays size={15} /> {formatDay(booking.starts_at.slice(0, 10))}<br /><Clock3 size={15} /> {formatTime(booking.starts_at)} – {formatTime(booking.ends_at)} Uhr</p><strong>{bookingPrice(booking)}</strong><div className="my-booking-actions"><button className="booking-cancel" onClick={() => void cancelBooking(booking.id)}><X size={23} strokeWidth={3} /><span>Stornieren</span></button></div></article>)}</div> : <p className="booking-empty">Noch keine kommenden Buchungen.</p>}
+            {myBookings.length ? <div className="my-booking-list">{myBookings.map((booking) => <article key={booking.id}><div><small>GEBUCHTER PLATZ</small><b>{booking.courts[0]?.name ?? "Court"}</b><span>{booking.courts[0]?.kind === "padel" ? "Padel" : "Tennis"}</span></div><p><CalendarDays size={15} /> {formatDay(booking.starts_at.slice(0, 10))}<br /><Clock3 size={15} /> {formatTime(booking.starts_at)} – {formatTime(booking.ends_at)} Uhr</p>{booking.partner_name && <p className="booking-for"><small>GEBUCHT FÜR</small>{booking.partner_name}</p>}<strong>{bookingPrice(booking)}</strong><div className="my-booking-actions"><button className="booking-cancel" onClick={() => void cancelBooking(booking.id)}><X size={23} strokeWidth={3} /><span>Stornieren</span></button></div></article>)}</div> : <p className="booking-empty">Noch keine kommenden Buchungen.</p>}
           </div>
+        )}
+        {userId && myWaitlist.length > 0 && (
+          <section className="waitlist-list">
+            <div>
+              <p className="eyebrow"><span /> Mitgliederkonto</p>
+              <h3>Meine Warteliste.</h3>
+            </div>
+            {myWaitlist.map((entry) => (
+              <article key={entry.id}>
+                <div>
+                  <b>{entry.courts[0]?.name ?? "Court"}</b>
+                  <span>
+                    {formatDay(entry.starts_at.slice(0, 10))} ·{" "}
+                    {formatTime(entry.starts_at)} – {formatTime(entry.ends_at)} Uhr
+                  </span>
+                </div>
+                <button type="button" onClick={() => void removeWaitlistEntry(entry.id)}>
+                  Austragen
+                </button>
+              </article>
+            ))}
+          </section>
         )}
         {notice && <p className="booking-notice">{notice}</p>}
       </div>
@@ -372,14 +540,44 @@ export function BookingPortal({
               <p className="booking-sheet-date">{formatDay(day)}<br />{formatTime(pending.start)} – {formatTime(selectedEnd)} Uhr</p>
               {step === "edit" ? <>
                 <fieldset><legend>Dauer</legend>{[60, 90].map((value) => <button key={value} className={minutes === value ? "is-active" : ""} onClick={() => setMinutes(value)}>{value} Min</button>)}</fieldset>
-                {canBookCourtGroups && pending.court.kind === "tennis" && <fieldset className="booking-group-courts"><legend>Plätze für Mannschaft / Turnier <small>bis zu 4 gleichzeitig</small></legend><div>{visibleCourts.filter((court) => court.id === pending.court.id || courtIsFreeForDuration(court.id, pending.start, minutes)).map((court) => <label key={court.id}><input type="checkbox" checked={selectedCourtIds.includes(court.id)} onChange={() => toggleCourt(court.id)} />{court.name}</label>)}</div></fieldset>}
+                <label>
+                  Wiederholung
+                  <select value={repeatWeeks} onChange={(event) => setRepeatWeeks(Number(event.target.value))}>
+                    <option value="1">Einmalig</option>
+                    <option value="2">2 Wochen lang, wöchentlich</option>
+                    <option value="3">3 Wochen lang, wöchentlich</option>
+                    <option value="4">4 Wochen lang, wöchentlich</option>
+                  </select>
+                  <small>Für feste Spieltermine. Jeder Termin muss bei der Buchung frei sein.</small>
+                </label>
                 <label>E-Mail für die Buchungsbestätigung<input required value={bookingEmail} onChange={(event) => setBookingEmail(event.target.value)} type="email" autoComplete="email" placeholder="name@beispiel.de" /><small className="booking-spam-note">Hinweis: Die Bestätigungs-E-Mail kann derzeit im Spam-Ordner landen. Bitte dort ebenfalls nachsehen.</small></label>
-                <label>Spielpartner <small>optional</small><input value={guestName} onChange={(event) => setGuestName(event.target.value)} placeholder="Name eingeben …" maxLength={100} /></label>
+                <label>Gebucht für <small>optional · dieser Name ist für andere angemeldete Mitglieder im Kalender sichtbar</small><input value={guestName} onChange={(event) => setGuestName(event.target.value)} placeholder="Name der spielenden Person" maxLength={100} /></label>
                 {notice && <p className="booking-sheet-notice">{notice}</p>}<button className="button button-light" onClick={reviewBooking}>Buchung prüfen <ArrowRight size={17} /></button>
               </> : <>
-                <div className="booking-confirm"><span>Sport</span><b>{pending.court.kind === "padel" ? "Padel" : "Tennis"}</b><span>{selectedCourts.length > 1 ? "Plätze" : "Court"}</span><b>{selectedCourts.map((court) => court.name).join(", ") || pending.court.name}</b><span>Bestätigung an</span><b>{bookingEmail}</b><span>Spielpartner</span><b>{guestName || "Kein Gastspieler"}</b><span>Preis</span><b>{pendingPrice}</b></div><button className="button button-light" onClick={() => void book()}>Verbindlich buchen <Check size={17} /></button><button className="booking-back" onClick={() => setStep("edit")}>Zurück</button>
+                <div className="booking-confirm"><span>Sport</span><b>{pending.court.kind === "padel" ? "Padel" : "Tennis"}</b><span>Court</span><b>{pending.court.name}</b><span>Bestätigung an</span><b>{bookingEmail}</b><span>Gebucht für</span><b>{guestName || "Nicht angegeben"}</b><span>Wiederholung</span><b>{repeatWeeks === 1 ? "Einmalig" : repeatWeeks + " wöchentliche Termine"}</b><span>Preis</span><b>{pendingPrice}</b></div><button className="button button-light" onClick={() => void book()}>Verbindlich buchen <Check size={17} /></button><button className="booking-back" onClick={() => setStep("edit")}>Zurück</button>
               </>}
             </>}
+          </div>
+        </div>
+      )}
+      {waitlistSlot && (
+        <div className="booking-sheet-backdrop" role="dialog" aria-modal="true" aria-label="Warteliste">
+          <div className="booking-sheet waitlist-sheet">
+            <button className="booking-sheet-close" onClick={() => setWaitlistSlot(null)} aria-label="Warteliste schließen"><X size={22} /></button>
+            <p className="eyebrow"><span /> TCT Warteliste</p>
+            <h3>Platz gerade belegt.</h3>
+            <p className="booking-sheet-date">
+              {waitlistSlot.court.name}<br />
+              {formatDay(day)} · {formatTime(waitlistSlot.start)} – {formatTime(waitlistSlot.end ?? new Date(waitlistSlot.start.getTime() + 60 * 60_000))} Uhr
+            </p>
+            <p>
+              Sobald genau dieser Termin frei wird, bekommst du eine E-Mail und
+              kannst den Platz direkt buchen. Die Warteliste reserviert den Platz
+              nicht automatisch.
+            </p>
+            <button className="button button-light" onClick={() => void joinWaitlist()}>
+              Auf Warteliste setzen <Check size={17} />
+            </button>
           </div>
         </div>
       )}

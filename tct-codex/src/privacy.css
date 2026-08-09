@@ -251,6 +251,7 @@
 /* Public member access: the dashboard stays role-gated after sign-in. */
 .site-header .admin-trigger { font-size: 10px; padding: 8px 10px; }
 .auth-switch { display:block; border:0; background:transparent; padding:0; margin-top:18px; color:var(--ink); text-decoration:underline; font-size:11px; font-weight:800; }
+.auth-forgot { display:block; border:0; background:transparent; padding:0; margin:18px 0 0; color:var(--ink); text-decoration:underline; font-size:11px; font-weight:800; }
 .menu-content > button.menu-member { display:flex; align-items:center; justify-content:space-between; width:100%; margin-top:10px; padding:13px 16px; border:0; background:var(--lime); color:var(--ink); font-size:12px; font-weight:800; }
 .menu-content > button.menu-member:hover { color:#fff; background:#2f694e; }
 .admin-dashboard aside .admin-signout { display:flex; gap:10px; align-items:center; margin-top:auto; width:100%; border:0; border-top:1px solid rgba(255,255,255,.2); background:transparent; color:rgba(255,255,255,.7); padding:15px 10px; font-size:12px; font-weight:700; text-align:left; }

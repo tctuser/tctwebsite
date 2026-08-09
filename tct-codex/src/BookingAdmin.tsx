@@ -4,7 +4,7 @@ import { supabase } from "./lib/supabase";
 
 type Court = { id: string; name: string };
 type CourtBlock = { id: string; title: string; starts_at: string; ends_at: string; courts: { name: string }[] };
-type Rules = { advance_days: number; max_active_bookings: number; default_minutes: number; cancellation_hours: number; allow_guest: boolean };
+type Rules = { advance_days: number; max_active_bookings: number; max_weekly_bookings: number; max_recurring_weeks: number; default_minutes: number; cancellation_hours: number; allow_guest: boolean };
 
 const localDateTime = (date: string, time: string) => new Date(`${date}T${time}:00`).toISOString();
 const dateTime = (value: string) => new Intl.DateTimeFormat("de-DE", { dateStyle: "medium", timeStyle: "short" }).format(new Date(value));
@@ -20,7 +20,7 @@ export function BookingAdmin({ open, close }: { open: boolean; close: () => void
     const [{ data: courtData }, { data: blockData }, { data: ruleData }] = await Promise.all([
       supabase.from("courts").select("id,name").eq("active", true).order("sort_order"),
       supabase.from("court_blocks").select("id,title,starts_at,ends_at,courts(name)").gte("ends_at", new Date().toISOString()).order("starts_at").limit(80),
-      supabase.from("booking_rules").select("advance_days,max_active_bookings,default_minutes,cancellation_hours,allow_guest").eq("id", true).maybeSingle(),
+      supabase.from("booking_rules").select("advance_days,max_active_bookings,max_weekly_bookings,max_recurring_weeks,default_minutes,cancellation_hours,allow_guest").eq("id", true).maybeSingle(),
     ]);
     if (courtData) setCourts(courtData as Court[]);
     if (blockData) setBlocks(blockData as CourtBlock[]);
@@ -66,6 +66,8 @@ export function BookingAdmin({ open, close }: { open: boolean; close: () => void
     const { error } = await supabase.from("booking_rules").update({
       advance_days: Number(form.get("advanceDays")),
       max_active_bookings: Number(form.get("maxBookings")),
+      max_weekly_bookings: Number(form.get("maxWeeklyBookings")),
+      max_recurring_weeks: Number(form.get("maxRecurringWeeks")),
       default_minutes: Number(form.get("defaultMinutes")),
       cancellation_hours: Number(form.get("cancellationHours")),
       allow_guest: form.get("allowGuest") === "on",
@@ -98,6 +100,8 @@ export function BookingAdmin({ open, close }: { open: boolean; close: () => void
           <p className="kicker">BUCHUNGSREGELN</p>
           <label>Vorausbuchung in Tagen<input required name="advanceDays" type="number" min="1" max="30" defaultValue={rules?.advance_days ?? 7} /></label>
           <label>Max. gleichzeitige Buchungen<input required name="maxBookings" type="number" min="1" max="20" defaultValue={rules?.max_active_bookings ?? 3} /></label>
+          <label>Max. Buchungen pro Woche<input required name="maxWeeklyBookings" type="number" min="1" max="20" defaultValue={rules?.max_weekly_bookings ?? 3} /></label>
+          <label>Max. Wochen bei Serienbuchung<input required name="maxRecurringWeeks" type="number" min="2" max="12" defaultValue={rules?.max_recurring_weeks ?? 4} /></label>
           <label>Standard-Spielzeit<select name="defaultMinutes" defaultValue={rules?.default_minutes ?? 60}><option value="60">60 Minuten</option><option value="90">90 Minuten</option><option value="120">120 Minuten</option></select></label>
           <label>Storno bis Stunden vorher<input required name="cancellationHours" type="number" min="0" max="48" defaultValue={rules?.cancellation_hours ?? 2} /></label>
           <label className="booking-check"><input name="allowGuest" type="checkbox" defaultChecked={rules?.allow_guest ?? true} /> Gastspieler erlauben</label>
