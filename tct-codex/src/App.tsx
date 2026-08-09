@@ -3857,7 +3857,10 @@ function App() {
           {livePartners.length > 0 && (
             <div className="container public-partner-list">
               <p className="eyebrow"><span /> Unsere Partner</p>
-              <div>{livePartners.map((item) => <a key={item.id} href={item.website} target="_blank" rel="noreferrer"><img src={item.logo} alt={item.name} />{item.note && <small>{item.note}</small>}</a>)}</div>
+              <div>{livePartners.map((item) => <a key={item.id} href={item.website} target="_blank" rel="noreferrer" aria-label={`${item.name} – Website öffnen`}>
+                {item.logo ? <img src={item.logo} alt={item.name} /> : <strong className="partner-name">{item.name}</strong>}
+                {item.note && <small>{item.note}</small>}
+              </a>)}</div>
             </div>
           )}
           <div className="container partner-inquiry-wrap" id="partner-anfrage">
@@ -3959,7 +3962,9 @@ function App() {
                 <h2 id="home-partners-title">Unsere Partner.</h2>
               </div>
               <div className="home-partner-logos">
-                {livePartners.slice(0, 6).map((item) => <a key={item.id} href={item.website} target="_blank" rel="noreferrer"><img src={item.logo} alt={item.name} /></a>)}
+                {livePartners.slice(0, 6).map((item) => <a key={item.id} href={item.website} target="_blank" rel="noreferrer" aria-label={`${item.name} – Website öffnen`}>
+                  {item.logo ? <img src={item.logo} alt={item.name} /> : <strong className="home-partner-name">{item.name}</strong>}
+                </a>)}
               </div>
               <a className="text-link" href="/partner">Partner werden <ArrowRight size={17} /></a>
             </div>
