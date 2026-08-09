@@ -158,6 +158,8 @@ type ManagedUser = {
   login_email: string | null;
   role: string;
   must_change_password: boolean;
+  email_verified: boolean;
+  profile_complete: boolean;
   created_at: string;
 };
 type TeamPhoto = { category: string; title: string; image: string };
@@ -1241,9 +1243,10 @@ function App() {
     null,
   );
   const [authMode, setAuthMode] = useState<
-    "login" | "register" | "forgot" | "reset"
+    "login" | "register" | "verify" | "forgot" | "reset"
   >("login");
   const [passwordResetIdentifier, setPasswordResetIdentifier] = useState("");
+  const [pendingRegistrationEmail, setPendingRegistrationEmail] = useState("");
   const [showAuthPassword, setShowAuthPassword] = useState(false);
   const [adminNotice, setAdminNotice] = useState("");
   const [adminEditor, setAdminEditor] = useState<AdminEditor>(null);
@@ -1302,6 +1305,7 @@ function App() {
   const [tournamentFormError, setTournamentFormError] = useState("");
   const [tournamentFormSent, setTournamentFormSent] = useState(false);
   const [managedUsers, setManagedUsers] = useState<ManagedUser[]>([]);
+  const [managedUserSearch, setManagedUserSearch] = useState("");
   const [mustChangePassword, setMustChangePassword] = useState(false);
   const [accountOpen, setAccountOpen] = useState(false);
   const [adminRole, setAdminRole] = useState("");
@@ -1706,6 +1710,13 @@ function App() {
   const canManageTournamentInbox = ["management", "admin", "tournament_manager"].includes(adminRole);
   const canManageBooking = ["management", "admin"].includes(adminRole);
   const canManageFocus = ["management", "admin", "editor"].includes(adminRole);
+  const filteredManagedUsers = managedUsers.filter((user) => {
+    const query = managedUserSearch.trim().toLowerCase();
+    if (!query) return true;
+    return [user.display_name, user.username, user.login_email, roleLabels[user.role]]
+      .filter(Boolean)
+      .some((value) => String(value).toLowerCase().includes(query));
+  });
   const traditionYears = new Date().getFullYear() - 1888;
   const tutorialSteps =
     adminRole === "programmer"
@@ -2222,7 +2233,7 @@ function App() {
   useEffect(() => {
     if (
       adminEditor === "users" &&
-      (adminEmail === OWNER_EMAIL || adminRole === "management")
+      adminEmail === OWNER_EMAIL
     )
       void loadManagedUsers();
   }, [adminEditor, adminEmail]);
@@ -2244,22 +2255,13 @@ function App() {
       return false;
     }
     if (!profile.email_verified) {
-      const code = window.prompt("Bitte gib den sechsstelligen Code aus deiner TCT-E-Mail ein.");
-      if (!code || !userEmail) {
-        await supabase.auth.signOut();
-        setAdminNotice("Bitte bestätige zuerst den sechsstelligen Code aus deiner TCT-E-Mail.");
-        return false;
-      }
-      const { data: verified, error: verifyError } = await supabase.functions.invoke(
-        "verify-member-email",
-        { body: { email: userEmail, code } },
+      setPendingRegistrationEmail(profile.login_email ?? userEmail ?? "");
+      setAuthMode("verify");
+      setAdminPanel("login");
+      setAdminNotice(
+        "Bitte bestätige dein Konto mit dem sechsstelligen Code aus deiner TCT-E-Mail.",
       );
-      if (verifyError || verified?.error) {
-        await supabase.auth.signOut();
-        setAdminNotice(verified?.error ?? "Code konnte nicht geprüft werden.");
-        return false;
-      }
-      profile.email_verified = true;
+      return false;
     }
     setAdminUserId(userId);
     setAdminEmail(profile.login_email ?? userEmail);
@@ -2302,8 +2304,9 @@ function App() {
     void restoreSession();
     const {
       data: { subscription },
-    } = client.auth.onAuthStateChange((_event, session) => {
+    } = client.auth.onAuthStateChange((event, session) => {
       if (session?.user) return;
+      if (event !== "SIGNED_OUT") return;
       setAdminUserId(null);
       setAdminEmail(null);
       setAdminRole("");
@@ -2369,14 +2372,16 @@ function App() {
       setAdminNotice("Supabase ist noch nicht verbunden.");
       return;
     }
-    const form = new FormData(event.currentTarget);
+    const formElement = event.currentTarget;
+    const form = new FormData(formElement);
+    const registrationEmail = String(form.get("email")).trim().toLowerCase();
     const { data, error } = await supabase.functions.invoke(
       "member-registration",
       {
         body: {
           displayName: String(form.get("displayName")).trim(),
           username: String(form.get("username")).trim(),
-          email: String(form.get("email")).trim(),
+          email: registrationEmail,
           password: String(form.get("password")),
         },
       },
@@ -2388,17 +2393,13 @@ function App() {
       );
       return;
     }
-    event.currentTarget.reset();
+    formElement.reset();
     if (data?.needsEmailConfirmation) {
-      const code = window.prompt("Fast geschafft: Bitte gib den sechsstelligen Code aus deiner TCT-E-Mail ein.");
-      if (!code) {
-        setAdminNotice("Der Code wurde per E-Mail versendet. Bestätige ihn beim nächsten Anmeldeversuch.");
-        setAuthMode("login");
-        return;
-      }
-      const { data: verified, error: verifyError } = await supabase.functions.invoke("verify-member-email", { body: { email: String(form.get("email")).trim(), code } });
-      setAuthMode("login");
-      setAdminNotice(verifyError || verified?.error ? verified?.error ?? "Code konnte nicht geprüft werden." : "E-Mail bestätigt. Du kannst dich jetzt anmelden.");
+      setPendingRegistrationEmail(registrationEmail);
+      setAuthMode("verify");
+      setAdminNotice(
+        "Der sechsstellige Code wurde versendet. Bitte prüfe auch deinen Spam-Ordner.",
+      );
       return;
     }
     setAuthMode("login");
@@ -2407,6 +2408,28 @@ function App() {
         ? "Fast geschafft: Bitte bestätige zuerst den Link in deiner E-Mail."
         : "Dein Mitgliederkonto wurde erstellt. Du kannst dich jetzt anmelden.",
     );
+  };
+
+  const verifyRegistrationEmail = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    if (!supabase || !pendingRegistrationEmail) {
+      setAdminNotice("Bitte registriere dich zuerst oder melde dich erneut an.");
+      return;
+    }
+    const code = String(new FormData(event.currentTarget).get("code")).trim();
+    const { data, error } = await supabase.functions.invoke(
+      "verify-member-email",
+      { body: { email: pendingRegistrationEmail, code } },
+    );
+    if (error || data?.error) {
+      setAdminNotice(data?.error ?? "Der Code konnte nicht geprüft werden.");
+      return;
+    }
+    await supabase.auth.signOut();
+    setPendingRegistrationEmail("");
+    setAuthMode("login");
+    setAdminPanel("login");
+    setAdminNotice("E-Mail bestätigt. Du kannst dich jetzt anmelden.");
   };
 
   const requestPasswordReset = async (event: FormEvent<HTMLFormElement>) => {
@@ -4703,6 +4726,8 @@ function App() {
                 ? "Willkommen"
                 : authMode === "register"
                   ? "Neu"
+                  : authMode === "verify"
+                    ? "E-Mail"
                   : "Passwort"}
               <br />
               <em>
@@ -4710,14 +4735,18 @@ function App() {
                   ? "zurück."
                   : authMode === "register"
                     ? "dabei."
+                    : authMode === "verify"
+                      ? "bestätigen."
                     : "neu."}
               </em>
             </h2>
             <p>
               {authMode === "login"
                 ? "Melde dich mit deinem TCT-Mitgliederkonto an und verwalte deine persönlichen Angaben und Buchungen."
-                : authMode === "register"
-                  ? "Erstelle dein persönliches TCT-Mitgliederkonto. Für die spätere Platzbuchung werden nur echte Mitgliederdaten freigeschaltet."
+                 : authMode === "register"
+                   ? "Erstelle dein persönliches TCT-Mitgliederkonto. Für die spätere Platzbuchung werden nur echte Mitgliederdaten freigeschaltet."
+                  : authMode === "verify"
+                    ? "Gib den sechsstelligen Code aus deiner TCT-E-Mail ein. Danach ist dein neues Mitgliederkonto freigeschaltet."
                   : authMode === "forgot"
                     ? "Wir schicken dir einen eigenen sechsstelligen TCT-Code, damit du sicher ein neues Passwort vergeben kannst."
                     : "Gib den Code aus deiner TCT-E-Mail ein und vergib anschließend ein neues Passwort."}
@@ -4800,6 +4829,29 @@ function App() {
                 </label>
                 <button className="button button-light" type="submit">
                   Konto erstellen <ArrowRight size={17} />
+                </button>
+              </form>
+            ) : authMode === "verify" ? (
+              <form onSubmit={verifyRegistrationEmail}>
+                <p className="form-note">
+                  Code gesendet an <strong>{pendingRegistrationEmail}</strong>.
+                  Bitte prüfe auch deinen Spam-Ordner.
+                </p>
+                <label>
+                  Sechsstelliger Bestätigungscode
+                  <input
+                    required
+                    autoFocus
+                    name="code"
+                    inputMode="numeric"
+                    autoComplete="one-time-code"
+                    pattern="[0-9]{6}"
+                    maxLength={6}
+                    placeholder="123456"
+                  />
+                </label>
+                <button className="button button-light" type="submit">
+                  Konto bestätigen <Check size={17} />
                 </button>
               </form>
             ) : authMode === "forgot" ? (
@@ -4888,6 +4940,7 @@ function App() {
                 onClick={() => {
                   setAuthMode("login");
                   setPasswordResetIdentifier("");
+                  setPendingRegistrationEmail("");
                   setAdminNotice("");
                 }}
               >
@@ -5179,15 +5232,15 @@ function App() {
                 </span>
                 <ArrowRight size={18} />
               </button>
-              {(adminEmail === OWNER_EMAIL || adminRole === "management") && (
+              {adminEmail === OWNER_EMAIL && (
                 <button
                   className="admin-task"
                   onClick={() => setAdminEditor("users")}
                 >
                   <UsersRound size={19} />
                   <span>
-                    <b>Benutzer verwalten</b>
-                    <small>Zugänge erstellen, Rollen ändern oder löschen</small>
+                    <b>Alle Benutzer &amp; Rollen</b>
+                    <small>Jede Registrierung sehen und Rollen festlegen</small>
                   </span>
                   <ArrowRight size={18} />
                 </button>
@@ -6257,7 +6310,7 @@ function App() {
         </div>
       )}
       {adminEditor === "users" &&
-        (adminEmail === OWNER_EMAIL || adminRole === "management") && (
+        adminEmail === OWNER_EMAIL && (
           <div
             className="editor-overlay users-editor"
             role="dialog"
@@ -6275,16 +6328,17 @@ function App() {
               <div className="users-heading">
                 <div>
                   <p className="eyebrow">
-                    <span /> Management
+                    <span /> Nur für den Eigentümer
                   </p>
                   <h2>
-                    Dein
+                    Alle
                     <br />
-                    <em>Team.</em>
+                    <em>Benutzer.</em>
                   </h2>
                   <p>
-                    Lege Zugänge an und vergib exakt die Berechtigung, die
-                    jemand braucht.
+                    Sieh jede Registrierung und vergib exakt die Rolle, die
+                    das Mitglied benötigt. Dieser Bereich ist ausschließlich
+                    für dein Eigentümer-Konto sichtbar.
                   </p>
                 </div>
                 <button onClick={() => void loadManagedUsers()}>
@@ -6330,7 +6384,8 @@ function App() {
                   </label>
                   <label>
                     Rolle
-                    <select name="role" defaultValue="tournament_manager">
+                    <select name="role" defaultValue="member">
+                      <option value="member">Mitglied</option>
                       <option value="management">
                         Management · alles wie Eigentümer
                       </option>
@@ -6355,9 +6410,20 @@ function App() {
                   </p>
                 </form>
                 <section className="users-list">
-                  <p className="kicker">BESTEHENDE ZUGÄNGE</p>
-                  {managedUsers.length ? (
-                    managedUsers.map((user) => (
+                  <div className="users-list-toolbar">
+                    <p className="kicker">ALLE REGISTRIERUNGEN · {managedUsers.length}</p>
+                    <label>
+                      <span>Benutzer suchen</span>
+                      <input
+                        type="search"
+                        value={managedUserSearch}
+                        onChange={(event) => setManagedUserSearch(event.target.value)}
+                        placeholder="Name, E-Mail, Benutzername oder Rolle"
+                      />
+                    </label>
+                  </div>
+                  {filteredManagedUsers.length ? (
+                    filteredManagedUsers.map((user) => (
                       <article key={user.id}>
                         <div>
                           <h3>
@@ -6368,10 +6434,11 @@ function App() {
                             {user.login_email ??
                               "E-Mail wird über Auth verwaltet"}
                           </p>
-                          <small>
-                            {user.must_change_password
-                              ? "Passwortwechsel beim ersten Login ausstehend"
-                              : "Zugang aktiv"}
+                           <small>
+                            {user.email_verified ? "E-Mail bestätigt" : "E-Mail noch nicht bestätigt"}
+                            {" · Registriert am "}
+                            {new Intl.DateTimeFormat("de-DE", { dateStyle: "medium", timeStyle: "short" }).format(new Date(user.created_at))}
+                            {!user.profile_complete && " · Profil wurde automatisch ergänzt"}
                           </small>
                         </div>
                         <label>
@@ -6404,6 +6471,7 @@ function App() {
                             <option value="team_manager">
                               Nur Mannschaften
                             </option>
+                            <option value="member">Mitglied</option>
                           </select>
                         </label>
                         {user.id !== adminUserId &&
