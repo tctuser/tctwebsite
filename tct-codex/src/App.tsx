@@ -1,4 +1,4 @@
-import { useEffect, useState, type FormEvent } from "react";
+import { lazy, Suspense, useEffect, useState, type FormEvent } from "react";
 import {
   ArrowLeft,
   ArrowDownRight,
@@ -41,9 +41,19 @@ import {
   teamGroups,
 } from "./data/club";
 import { supabase } from "./lib/supabase";
-import { BookingPortal } from "./BookingPortal";
-import { BookingAdmin } from "./BookingAdmin";
-import { PartnerBoard } from "./PartnerBoard";
+
+// Code-Splitting: Buchung, Buchungs-Admin und die Spielpartner-Börse werden
+// nur geladen, wenn sie tatsächlich gebraucht werden, statt bei jedem
+// Seitenaufruf im Hauptbundle mitzuladen.
+const BookingPortal = lazy(() =>
+  import("./BookingPortal").then((m) => ({ default: m.BookingPortal })),
+);
+const BookingAdmin = lazy(() =>
+  import("./BookingAdmin").then((m) => ({ default: m.BookingAdmin })),
+);
+const PartnerBoard = lazy(() =>
+  import("./PartnerBoard").then((m) => ({ default: m.PartnerBoard })),
+);
 
 const navLinks = [
   ["Club", "/club"],
@@ -1228,12 +1238,75 @@ function ClubAssistant({
   );
 }
 
+const KNOWN_SECTION_PAGES = ["club", "anlage", "teams", "turniere", "news", "mitglied-werden", "service", "kontakt", "galerie", "partner", "spielpartner", "impressum"];
+const KNOWN_PATHS = ["", "/", "/booking", "/turnier-anmeldung", "/datenschutz", ...KNOWN_SECTION_PAGES.map((page) => `/${page}`)];
+
 function App() {
-  const currentPath = window.location.pathname.replace(/\/+$/, "");
+  // Client-seitiges Routing: currentPath ist reaktiver State statt eines
+  // einmalig beim Laden gelesenen const. Ein globaler Klick-Interceptor
+  // (siehe unten) verhindert den vollen Browser-Reload bei internen Links
+  // und ruft stattdessen pushState + setCurrentPath auf. Vorher löste jeder
+  // Navigationsklick einen kompletten Neuladevorgang aus.
+  const [currentPath, setCurrentPath] = useState(() =>
+    window.location.pathname.replace(/\/+$/, ""),
+  );
+  const [currentSearch, setCurrentSearch] = useState(() => window.location.search);
+
+  const navigate = (path: string) => {
+    const url = new URL(path, window.location.origin);
+    const samePage =
+      url.pathname === window.location.pathname && url.search === window.location.search;
+    window.history.pushState(null, "", path);
+    setCurrentPath(url.pathname.replace(/\/+$/, ""));
+    setCurrentSearch(url.search);
+    if (url.hash) {
+      // Anker-Links (z.B. /club#geschichte) sollen weiterhin zur Zielstelle
+      // springen statt immer nach ganz oben zu scrollen.
+      requestAnimationFrame(() => {
+        document
+          .getElementById(url.hash.slice(1))
+          ?.scrollIntoView({ behavior: samePage ? "smooth" : "instant" });
+      });
+    } else {
+      window.scrollTo({ top: 0, behavior: "instant" as ScrollBehavior });
+    }
+  };
+
+  useEffect(() => {
+    const onPopState = () => {
+      setCurrentPath(window.location.pathname.replace(/\/+$/, ""));
+      setCurrentSearch(window.location.search);
+    };
+    window.addEventListener("popstate", onPopState);
+    return () => window.removeEventListener("popstate", onPopState);
+  }, []);
+
+  useEffect(() => {
+    const onClick = (event: MouseEvent) => {
+      if (event.defaultPrevented || event.button !== 0) return;
+      if (event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
+      const anchor = (event.target as HTMLElement)?.closest?.("a");
+      if (!anchor) return;
+      const href = anchor.getAttribute("href");
+      if (!href || !href.startsWith("/") || href.startsWith("//")) return;
+      if (anchor.target && anchor.target !== "_self") return;
+      if (anchor.hasAttribute("download")) return;
+      // Links auf echte Dateien (z.B. /vereinsunterlagen/satzung.pdf) sollen
+      // normal geöffnet/heruntergeladen werden, nicht vom Router abgefangen.
+      const lastSegment = href.split(/[?#]/)[0].split("/").pop() ?? "";
+      if (lastSegment.includes(".")) return;
+      event.preventDefault();
+      navigate(href);
+    };
+    document.addEventListener("click", onClick);
+    return () => document.removeEventListener("click", onClick);
+  }, []);
+
   const isHomePage = currentPath === "" || currentPath === "/";
   const isBookingPage = currentPath === "/booking";
   const isTournamentContactPage = currentPath === "/turnier-anmeldung";
-  const sectionPage = ["club", "anlage", "teams", "turniere", "news", "mitglied-werden", "service", "kontakt", "galerie", "partner", "spielpartner", "impressum"].find(
+  const isKnownPath = KNOWN_PATHS.includes(currentPath);
+  const sectionPage = KNOWN_SECTION_PAGES.find(
     (page) => currentPath === `/${page}`,
   );
   const sectionPageInfo: Record<string, { eyebrow: string; title: string; accent: string; text: string }> = {
@@ -1252,8 +1325,8 @@ function App() {
   };
   const pageInfo = sectionPage ? sectionPageInfo[sectionPage] : null;
   const isFocusedPage = !isHomePage;
-  const selectedTournamentTitle = new URLSearchParams(window.location.search).get("turnier") ?? "Allgemeine Turnieranfrage";
-  const registrationAllowed = new URLSearchParams(window.location.search).get("anmeldung") !== "0";
+  const selectedTournamentTitle = new URLSearchParams(currentSearch).get("turnier") ?? "Allgemeine Turnieranfrage";
+  const registrationAllowed = new URLSearchParams(currentSearch).get("anmeldung") !== "0";
   const [menuOpen, setMenuOpen] = useState(false);
   const [searchOpen, setSearchOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
@@ -3099,6 +3172,31 @@ function App() {
     setAdminNotice("Das Website-Design entspricht wieder vollständig dem TCT-Standard.");
   };
 
+  if (!isKnownPath) {
+    return (
+      <main className="not-found-page">
+        <div className="container">
+          <p className="eyebrow">
+            <span /> Fehler 404
+          </p>
+          <h1>Seite nicht gefunden.</h1>
+          <p>
+            Die aufgerufene Seite gibt es nicht (mehr). Vielleicht hilft dir
+            einer dieser Links weiter.
+          </p>
+          <div className="not-found-actions">
+            <a className="button button-light" href="/">
+              Zur Startseite <ArrowRight size={17} />
+            </a>
+            <a className="button button-outline" href="/kontakt">
+              Kontakt aufnehmen
+            </a>
+          </div>
+        </div>
+      </main>
+    );
+  }
+
   return (
     <main className={`${isBookingPage ? "booking-page" : isTournamentContactPage ? "tournament-contact-page" : ""} ${sectionPage ? "section-page" : ""}`}>
       <NewsManager
@@ -3157,10 +3255,12 @@ function App() {
         role={adminRole}
         themeChanged={(theme) => setLiveSiteTheme(normalizeSiteTheme(theme))}
       />
-      <BookingAdmin
-        open={adminEditor === "booking" && canManageBooking}
-        close={() => setAdminEditor(null)}
-      />
+      <Suspense fallback={null}>
+        <BookingAdmin
+          open={adminEditor === "booking" && canManageBooking}
+          close={() => setAdminEditor(null)}
+        />
+      </Suspense>
       <a className="skip-link" href="#content">
         Zum Inhalt springen
       </a>
@@ -3514,27 +3614,31 @@ function App() {
         </section>
 
         {isBookingPage && (
-          <BookingPortal
-            userId={adminUserId}
-            defaultEmail={adminEmail ?? ""}
-            onRequireLogin={() => {
-              setAuthMode("login");
-              setAdminNotice("");
-              setAdminPanel("login");
-            }}
-          />
+          <Suspense fallback={<p className="lazy-loading">Lädt …</p>}>
+            <BookingPortal
+              userId={adminUserId}
+              defaultEmail={adminEmail ?? ""}
+              onRequireLogin={() => {
+                setAuthMode("login");
+                setAdminNotice("");
+                setAdminPanel("login");
+              }}
+            />
+          </Suspense>
         )}
         {currentPath === "/spielpartner" && (
-          <PartnerBoard
-            userId={adminUserId}
-            defaultEmail={adminEmail ?? ""}
-            displayName={adminName}
-            onRequireLogin={() => {
-              setAuthMode("login");
-              setAdminNotice("");
-              setAdminPanel("login");
-            }}
-          />
+          <Suspense fallback={<p className="lazy-loading">Lädt …</p>}>
+            <PartnerBoard
+              userId={adminUserId}
+              defaultEmail={adminEmail ?? ""}
+              displayName={adminName}
+              onRequireLogin={() => {
+                setAuthMode("login");
+                setAdminNotice("");
+                setAdminPanel("login");
+              }}
+            />
+          </Suspense>
         )}
 
         <section className="section experience-section route-anlage">
@@ -3889,7 +3993,7 @@ function App() {
                   >
                     <div className="news-image">
                       {news.image_path ? (
-                        <img src={news.image_path} alt="" />
+                        <img src={news.image_path} alt={news.title} />
                       ) : (
                         <span>
                           TCT
@@ -4455,7 +4559,7 @@ function App() {
               onClick={() => {
                 setPrivacyOpen(false);
                 if (currentPath === "/datenschutz") {
-                  window.location.assign("/");
+                  navigate("/");
                 } else {
                   window.history.replaceState(null, "", "#top");
                 }
@@ -5930,7 +6034,7 @@ function App() {
           </button>
           <article className="news-detail">
             {selectedNews.image_path && (
-              <img src={selectedNews.image_path} alt="" />
+              <img src={selectedNews.image_path} alt={selectedNews.title} />
             )}
             <p className="eyebrow">
               <span />{" "}
