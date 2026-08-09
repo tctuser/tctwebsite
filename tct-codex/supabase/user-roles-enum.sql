@@ -4,3 +4,4 @@ alter type public.editor_role add value if not exists 'tournament_manager';
 alter type public.editor_role add value if not exists 'team_manager';
 alter type public.editor_role add value if not exists 'content_manager';
 alter type public.editor_role add value if not exists 'management';
+alter type public.editor_role add value if not exists 'programmer';

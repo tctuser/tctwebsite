@@ -58,5 +58,5 @@ with check (exists (select 1 from public.profiles where id = auth.uid() and role
 drop policy if exists "editors manage club content" on public.club_content;
 drop policy if exists "club content managed by permitted roles" on public.club_content;
 create policy "club content managed by permitted roles" on public.club_content for all
-using (exists (select 1 from public.profiles where id = auth.uid() and (role in ('management', 'admin', 'editor', 'content_manager') or (role = 'team_manager' and key = 'teams'))))
-with check (exists (select 1 from public.profiles where id = auth.uid() and (role in ('management', 'admin', 'editor', 'content_manager') or (role = 'team_manager' and key = 'teams'))));
+using (exists (select 1 from public.profiles where id = auth.uid() and (role in ('management', 'admin', 'editor', 'content_manager') or (role = 'team_manager' and club_content.key = 'teams') or (role = 'programmer' and club_content.key = 'site_theme'))))
+with check (exists (select 1 from public.profiles where id = auth.uid() and (role in ('management', 'admin', 'editor', 'content_manager') or (role = 'team_manager' and club_content.key = 'teams') or (role = 'programmer' and club_content.key = 'site_theme'))));

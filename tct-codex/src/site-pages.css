@@ -95,3 +95,25 @@
   .partner-board{padding-block:72px}.partner-board-head{display:grid;align-items:start;margin-bottom:28px}.partner-board-head h2{font-size:clamp(3.7rem,16vw,5.7rem)}.partner-board-head .button{justify-self:start}.partner-form{grid-template-columns:1fr;padding:20px;gap:15px}.partner-form label:nth-child(3),.partner-form>p{grid-column:auto}.partner-list article{grid-template-columns:42px minmax(0,1fr);gap:13px;padding:20px 0}.partner-avatar{width:42px;height:42px}.partner-contact,.partner-remove{grid-column:2;justify-self:start;padding-top:0}.partner-title{flex-wrap:wrap}
   .site-header{justify-content:flex-start;gap:11px}.site-header .header-actions{margin-left:auto}.desktop-nav-more{display:none}.mobile-header-title{display:flex;flex-direction:column;align-items:flex-start;color:#fff;line-height:1}.mobile-header-title span{font:400 clamp(1.25rem,5vw,1.7rem)/.82 var(--serif);letter-spacing:-.065em;white-space:nowrap}.mobile-header-title em{font-weight:400;color:var(--lime)}.mobile-header-title small{margin-top:4px;color:rgba(255,255,255,.64);font:500 8px/1 var(--mono);letter-spacing:.17em;text-transform:uppercase}.menu-content{width:min(100% - 40px,560px);padding-top:88px;padding-bottom:34px}.menu-close{top:20px;right:20px}.mobile-menu-account{margin-top:18px}.mobile-menu-groups{grid-template-columns:1fr;gap:26px;margin-top:29px}.mobile-menu-group>p{margin-bottom:10px}.mobile-menu-group a{min-height:38px;font-size:14px!important}.menu-content>a.menu-book{min-height:52px}
 }
+
+/* Keep dense labels readable instead of squeezing them beside each other. */
+@media(max-width:600px){
+  .section-head{flex-direction:column;align-items:flex-start;gap:12px}
+  .section-head>p{margin-block:0}
+  .quick-links-grid a{min-width:0;grid-template-columns:minmax(0,1fr) auto}
+  .tournaments .filter-row{flex-wrap:wrap;overflow:visible}
+  .tournament-entry>div{min-width:0}
+  .tournament-entry.is-ended{grid-template-columns:90px minmax(0,1fr)}
+  .tournament-entry.is-ended .tournament-ended-label{grid-column:2;justify-self:start;margin-top:8px}
+}
+
+/* 320 px is still common on compact and zoomed mobile screens. */
+@media(max-width:340px){
+  .site-header{padding-inline:14px;gap:7px}
+  .site-header .mobile-header-title span{font-size:1.1rem}
+  .site-header .mobile-header-title small{font-size:7px}
+  .site-header .header-actions{gap:1px}
+  .site-header .admin-trigger,.site-header .icon-button{padding:6px}
+  .site-header .menu-trigger{width:34px;height:34px}
+  .partner-board-head h2{font-size:3.25rem}
+}

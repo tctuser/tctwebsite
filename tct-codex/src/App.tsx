@@ -82,6 +82,57 @@ type ClubSettings = {
   padelBookingUrl: string;
   schoolUrl: string;
 };
+type SiteTheme = {
+  headingFont: "dm-serif" | "playfair" | "cormorant" | "libre-baskerville";
+  bodyFont: "manrope" | "inter" | "montserrat" | "source-sans";
+  darkColor: string;
+  deepDarkColor: string;
+  accentColor: string;
+  backgroundColor: string;
+};
+const defaultSiteTheme: SiteTheme = {
+  headingFont: "dm-serif",
+  bodyFont: "manrope",
+  darkColor: "#112e25",
+  deepDarkColor: "#0b211a",
+  accentColor: "#cef166",
+  backgroundColor: "#f5f3ee",
+};
+const headingFontFamilies: Record<SiteTheme["headingFont"], string> = {
+  "dm-serif": "'DM Serif Display', Georgia, serif",
+  playfair: "'Playfair Display', Georgia, serif",
+  cormorant: "'Cormorant Garamond', Georgia, serif",
+  "libre-baskerville": "'Libre Baskerville', Georgia, serif",
+};
+const bodyFontFamilies: Record<SiteTheme["bodyFont"], string> = {
+  manrope: "Manrope, Arial, sans-serif",
+  inter: "Inter, Arial, sans-serif",
+  montserrat: "Montserrat, Arial, sans-serif",
+  "source-sans": "'Source Sans 3', Arial, sans-serif",
+};
+const normalizeSiteTheme = (value: unknown): SiteTheme => {
+  const source = value && typeof value === "object"
+    ? (value as Partial<Record<keyof SiteTheme, unknown>>)
+    : {};
+  const headingFont = typeof source.headingFont === "string" && source.headingFont in headingFontFamilies
+    ? (source.headingFont as SiteTheme["headingFont"])
+    : defaultSiteTheme.headingFont;
+  const bodyFont = typeof source.bodyFont === "string" && source.bodyFont in bodyFontFamilies
+    ? (source.bodyFont as SiteTheme["bodyFont"])
+    : defaultSiteTheme.bodyFont;
+  const safeColor = (candidate: unknown, fallback: string) =>
+    typeof candidate === "string" && /^#[0-9a-f]{6}$/i.test(candidate)
+      ? candidate.toLowerCase()
+      : fallback;
+  return {
+    headingFont,
+    bodyFont,
+    darkColor: safeColor(source.darkColor, defaultSiteTheme.darkColor),
+    deepDarkColor: safeColor(source.deepDarkColor, defaultSiteTheme.deepDarkColor),
+    accentColor: safeColor(source.accentColor, defaultSiteTheme.accentColor),
+    backgroundColor: safeColor(source.backgroundColor, defaultSiteTheme.backgroundColor),
+  };
+};
 type ContactMessage = {
   id: string;
   name: string;
@@ -176,7 +227,12 @@ type FeaturedContent = {
   venueAddress?: string;
 };
 type AiProposal = {
-  action: "create_news" | "create_event" | "update_team" | "create_user";
+  action:
+    | "create_news"
+    | "create_event"
+    | "update_team"
+    | "create_user"
+    | "update_theme";
   title: string;
   details: string;
   payload: Record<string, unknown>;
@@ -330,6 +386,7 @@ const auditFieldLabels: Record<string, string> = {
 const roleLabels: Record<string, string> = {
   member: "Mitglied",
   management: "Management",
+  programmer: "Programmer",
   admin: "Vollzugriff",
   editor: "Vollzugriff Redaktion",
   content_manager: "Redaktion & Medien",
@@ -339,6 +396,7 @@ const roleLabels: Record<string, string> = {
 
 const editorialRoles = [
   "management",
+  "programmer",
   "admin",
   "editor",
   "content_manager",
@@ -961,10 +1019,12 @@ function ClubAssistant({
   open,
   close,
   role,
+  themeChanged,
 }: {
   open: boolean;
   close: () => void;
   role: string;
+  themeChanged: (theme: SiteTheme) => void;
 }) {
   const [prompt, setPrompt] = useState("");
   const [reply, setReply] = useState("");
@@ -1022,11 +1082,16 @@ function ClubAssistant({
       return;
     }
     setStatus(data.message ?? "Änderung wurde ausgeführt.");
+    if (proposal.action === "update_theme" && data.theme) {
+      themeChanged(data.theme as SiteTheme);
+    }
     setProposal(null);
     setPrompt("");
     setPassword("");
   };
   const examples: Record<string, string> = {
+    programmer:
+      "Ändere die Überschriften auf Playfair Display und die Akzentfarbe auf #d8ff63.",
     tournament_manager:
       "Erstelle ein Jugend-LK-Turnier am 14. September um 10 Uhr.",
     team_manager: "Aktualisiere den Saisonhinweis für Herren.",
@@ -1198,6 +1263,7 @@ function App() {
     padelBookingUrl: club.padelUrl,
     schoolUrl: club.schoolUrl,
   });
+  const [liveSiteTheme, setLiveSiteTheme] = useState<SiteTheme>(defaultSiteTheme);
   const [liveSiteImages, setLiveSiteImages] = useState<
     Record<SiteImageKey, string>
   >({ ...officialImages });
@@ -1381,6 +1447,30 @@ function App() {
     };
     void loadClubSettings();
   }, []);
+
+  useEffect(() => {
+    const client = supabase;
+    if (!client) return;
+    const loadSiteTheme = async () => {
+      const { data } = await client
+        .from("club_content")
+        .select("value")
+        .eq("key", "site_theme")
+        .maybeSingle();
+      setLiveSiteTheme(normalizeSiteTheme(data?.value?.settings));
+    };
+    void loadSiteTheme();
+  }, []);
+
+  useEffect(() => {
+    const root = document.documentElement;
+    root.style.setProperty("--serif", headingFontFamilies[liveSiteTheme.headingFont]);
+    root.style.setProperty("--sans", bodyFontFamilies[liveSiteTheme.bodyFont]);
+    root.style.setProperty("--ink", liveSiteTheme.darkColor);
+    root.style.setProperty("--ink-2", liveSiteTheme.deepDarkColor);
+    root.style.setProperty("--lime", liveSiteTheme.accentColor);
+    root.style.setProperty("--cream", liveSiteTheme.backgroundColor);
+  }, [liveSiteTheme]);
 
   useEffect(() => {
     if (["#admin", "#anmelden", "#registrieren"].includes(window.location.hash)) {
@@ -1618,7 +1708,13 @@ function App() {
   const canManageFocus = ["management", "admin", "editor"].includes(adminRole);
   const traditionYears = new Date().getFullYear() - 1888;
   const tutorialSteps =
-    adminRole === "tournament_manager"
+    adminRole === "programmer"
+      ? [
+          ["Willkommen.", "Du verwaltest das technische Erscheinungsbild der TCT-Website mit dem abgesicherten KI-Designer."],
+          ["KI-Website-Designer", "Beschreibe Schriftarten oder Farben. Groq erstellt zuerst einen Vorschlag; erst deine Bestätigung wendet ihn an."],
+          ["Sicherheitsgrenze", "Deine Rolle kann keine Benutzer verwalten oder löschen. Der Eigentümer kann jedes KI-Design jederzeit auf den TCT-Standard zurücksetzen."],
+        ]
+      : adminRole === "tournament_manager"
       ? [
           ["Willkommen.", "Du verwaltest Termine und Turniere für den Club."],
           [
@@ -2911,6 +3007,29 @@ function App() {
     await loadAudit();
   };
 
+  const resetSiteTheme = async () => {
+    if (
+      !supabase ||
+      adminEmail !== OWNER_EMAIL ||
+      !window.confirm(
+        "Alle KI-Designänderungen wirklich auf den fest eingebauten TCT-Standard zurücksetzen?",
+      )
+    )
+      return;
+    const { data, error } = await supabase.functions.invoke("club-ai", {
+      body: { mode: "reset_theme" },
+    });
+    if (error || data?.error) {
+      setAdminNotice(
+        data?.error ??
+          `Design konnte nicht zurückgesetzt werden: ${error?.message ?? "Unbekannter Fehler"}`,
+      );
+      return;
+    }
+    setLiveSiteTheme(normalizeSiteTheme(data.theme));
+    setAdminNotice("Das Website-Design entspricht wieder vollständig dem TCT-Standard.");
+  };
+
   return (
     <main className={`${isBookingPage ? "booking-page" : isTournamentContactPage ? "tournament-contact-page" : ""} ${sectionPage ? "section-page" : ""}`}>
       <NewsManager
@@ -2967,6 +3086,7 @@ function App() {
         open={adminEditor === "assistant"}
         close={() => setAdminEditor(null)}
         role={adminRole}
+        themeChanged={(theme) => setLiveSiteTheme(normalizeSiteTheme(theme))}
       />
       <BookingAdmin
         open={adminEditor === "booking" && canManageBooking}
@@ -3650,7 +3770,7 @@ function App() {
         </section>
 
         {selectedTournament && (
-          <div className="tournament-detail-backdrop" role="dialog" aria-modal="true" aria-label="Turnierdetails">
+          <div className="tournament-detail-backdrop route-turniere" role="dialog" aria-modal="true" aria-label="Turnierdetails">
             <article className="tournament-detail-card">
               <button className="admin-close" onClick={() => setSelectedTournament(null)} aria-label="Turnierdetails schließen"><X size={23} /></button>
               <p className="eyebrow"><span /> {selectedTournament.kicker}</p>
@@ -4376,7 +4496,9 @@ function App() {
                 <h2>6. KI-Assistent im Adminbereich</h2>
                 <p>
                   Angemeldete Redaktionsmitglieder können einen KI-Assistenten
-                  nutzen, um Entwürfe für News oder Termine zu erstellen. Dafür
+                  nutzen, um Entwürfe für News oder Termine zu erstellen. Die
+                  gesonderte Rolle „Programmer“ kann zusätzlich kontrollierte
+                  Designvorschläge für Schriftarten und Farben bestätigen. Dafür
                   wird die eingegebene Anweisung an Groq übermittelt. Groq
                   verarbeitet Daten auch in den USA; der Verein schließt hierfür
                   vor dem Livegang den passenden Auftragsverarbeitungsvertrag
@@ -4877,11 +4999,21 @@ function App() {
               >
                 <span className="admin-task-icon">✦</span>
                 <span>
-                  <b>KI-Assistent</b>
-                  <small>News, Termine und Inhalte per Text vorbereiten</small>
+                  <b>{adminRole === "programmer" ? "KI-Website-Designer" : "KI-Assistent"}</b>
+                  <small>{adminRole === "programmer" ? "Schriftarten und Farben kontrolliert ändern" : "News, Termine und Inhalte per Text vorbereiten"}</small>
                 </span>
                 <ArrowRight size={18} />
               </button>
+              {adminEmail === OWNER_EMAIL && (
+                <button className="admin-task" onClick={() => void resetSiteTheme()}>
+                  <Settings2 size={19} />
+                  <span>
+                    <b>TCT-Designstandard</b>
+                    <small>Alle KI-Designänderungen vollständig zurücksetzen</small>
+                  </span>
+                  <ArrowRight size={18} />
+                </button>
+              )}
               {canManageNews && (
                 <button
                   className="admin-task"
@@ -6204,6 +6336,7 @@ function App() {
                       <option value="management">
                         Management · alles wie Eigentümer
                       </option>
+                      <option value="programmer">Programmer · KI-Website-Design</option>
                       <option value="admin">Vollzugriff</option>
                       <option value="editor">Vollzugriff Redaktion</option>
                       <option value="content_manager">
@@ -6256,6 +6389,9 @@ function App() {
                           >
                             <option value="management">
                               Management · alles wie Eigentümer
+                            </option>
+                            <option value="programmer">
+                              Programmer · KI-Website-Design
                             </option>
                             <option value="admin">Vollzugriff</option>
                             <option value="editor">
