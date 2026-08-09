@@ -1,0 +1,1 @@
+.ticker{overflow:hidden}.ticker-track{display:flex;width:max-content;will-change:transform;animation:tct-ticker-loop 22s linear infinite!important}.ticker-set{display:flex;align-items:center;gap:27px;flex:none;padding-right:27px}@keyframes tct-ticker-loop{from{transform:translateX(0)}to{transform:translateX(-25%)}}

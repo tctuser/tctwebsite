@@ -1,0 +1,10 @@
+/* /booking is a focused member portal, not a section inside the public homepage. */
+.booking-page > .hero,
+.booking-page > .ticker,
+.booking-page > .section,
+.booking-page > .quick-links,
+.booking-page > .social-section,
+.booking-page > .footer { display:none; }
+.booking-page #content > :not(.booking-section) { display:none; }
+.booking-page .booking-section { min-height:100vh; padding-top:150px; }
+@media (max-width:800px){.booking-page .booking-section{padding-top:112px}}

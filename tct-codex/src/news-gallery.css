@@ -1,0 +1,1 @@
+.news-gallery{display:grid;grid-template-columns:repeat(2,1fr);gap:10px;margin-top:28px}.news-gallery img{width:100%;aspect-ratio:1.15;object-fit:cover}@media(max-width:520px){.news-gallery{grid-template-columns:1fr}}
