@@ -28,6 +28,7 @@
 .event-create-form label { display: grid; min-width: 0; gap: 7px; font-size: .74rem; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; }
 .event-create-form input, .event-create-form textarea, .event-create-form select { width: 100%; min-width: 0; box-sizing: border-box; border: 1px solid #c8cec5; padding: 12px; background: #fffdf7; color: #103326; font: inherit; }
 .event-create-form .event-registration-check{display:block;padding:12px;border:1px solid #c8cec5;background:#fffdf7;text-transform:none;letter-spacing:normal}.event-create-form .event-registration-check input{display:inline-block;width:auto;margin:0 8px 0 0;vertical-align:middle;accent-color:#103326}.event-create-form .event-registration-check small{display:block;margin:7px 0 0;color:#526058;font-size:.72rem;font-weight:600;line-height:1.45}
+.event-option-grid{display:grid;grid-template-columns:1fr 1fr;gap:10px}.event-venue-row{display:grid;grid-template-columns:.8fr 1.2fr;gap:10px}.event-create-form label>small{color:#526058;font-size:.67rem;line-height:1.4;text-transform:none;letter-spacing:normal}.event-edit-cancel{border:0;padding:8px;color:#526058;background:transparent;font-size:.72rem;font-weight:800;text-decoration:underline}.event-edit-cancel:hover{color:#103326}
 .event-create-form textarea { resize: vertical; }
 .event-date-row { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
 .event-create-form .button { justify-content: center; margin-top: 8px; }
@@ -41,8 +42,7 @@
 .event-admin-list span { color: #c9f85b; font-size: .7rem; font-weight: 700; letter-spacing: .1em; text-transform: uppercase; }
 .event-admin-list h4 { margin: 6px 0; font-size: 1rem; }
 .event-admin-list p { margin: 0; color: rgba(247,245,237,.67); font-size: .83rem; }
-.event-admin-list article > button { color: #ffc6b5; border-color: rgba(255,198,181,.55); }
-.event-admin-list article > button:hover { color: #10291f; background: #ffc6b5; }
+.event-admin-list small{display:block;max-width:430px;margin-top:6px;color:rgba(247,245,237,.58);font-size:.7rem;line-height:1.45}.event-admin-actions{display:flex;flex-direction:column;gap:7px;flex:none}.event-admin-actions button{border:1px solid rgba(247,245,237,.42);padding:8px 10px;color:#f7f5ed;background:transparent;font:700 .7rem var(--sans)}.event-admin-actions button:first-child:hover{color:#10291f;background:#c9f85b}.event-admin-actions button:last-child{color:#ffc6b5;border-color:rgba(255,198,181,.55)}.event-admin-actions button:last-child:hover{color:#10291f;background:#ffc6b5}
 .event-empty { padding: 22px 0; }
 
 @media (max-width: 980px) {
@@ -60,6 +60,8 @@
   .event-save-notice { right: 17px; top: 17px; }
   .event-manager-grid { grid-template-columns: 1fr; gap: 32px; }
   .event-date-row { grid-template-columns: 1fr; }
+  .event-option-grid,.event-venue-row{grid-template-columns:1fr}
+  .event-admin-list article{align-items:flex-start}.event-admin-actions{flex-direction:row}
 }
 
 .club-settings-editor { z-index: 90; }

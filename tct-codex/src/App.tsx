@@ -8,6 +8,7 @@ import {
   Check,
   Eye,
   EyeOff,
+  Euro,
   FileText,
   ImagePlus,
   LayoutDashboard,
@@ -126,6 +127,10 @@ type PublicEvent = {
   starts_at: string | null;
   ends_at: string | null;
   registration_enabled: boolean;
+  spectators_allowed: boolean;
+  admission_price_cents: number | null;
+  venue_name: string | null;
+  venue_address: string | null;
 };
 type MediaFile = { name: string; created_at: string | null };
 type AdminEditor =
@@ -164,6 +169,11 @@ type FeaturedContent = {
   image: string;
   date: string;
   href: string;
+  spectatorsAllowed?: boolean;
+  admissionPriceCents?: number | null;
+  admissionLabel?: string;
+  venueName?: string;
+  venueAddress?: string;
 };
 type AiProposal = {
   action: "create_news" | "create_event" | "update_team" | "create_user";
@@ -254,6 +264,11 @@ const defaultFeaturedContent: FeaturedContent = {
   image: "/assets/tct/images/turnier-itf-2026.png",
   date: "10. – 16. August 2026",
   href: "/turniere",
+  spectatorsAllowed: true,
+  admissionPriceCents: null,
+  admissionLabel: "Mo–Fr frei · Wochenende Preis folgt",
+  venueName: "TC Trier 1888 e.V.",
+  venueAddress: "Am Stadion 1, 54292 Trier",
 };
 const siteSearchIndex = [
   {
@@ -351,6 +366,27 @@ function auditChangeSummary(item: AuditItem) {
 function ExternalArrow() {
   return <ArrowDownRight size={17} strokeWidth={2.2} aria-hidden="true" />;
 }
+
+const eventMapsUrl = (address?: string | null) =>
+  address
+    ? `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(address)}`
+    : "";
+
+const eventAdmissionLabel = (price?: number | null) => {
+  if (price === 0) return "Eintritt frei";
+  if (typeof price !== "number") return "Preis folgt";
+  return `${new Intl.NumberFormat("de-DE", {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  }).format(price / 100)} € Eintritt`;
+};
+
+const eventDateTimeInput = (value?: string | null) => {
+  if (!value) return "";
+  const date = new Date(value);
+  const offset = date.getTimezoneOffset() * 60_000;
+  return new Date(date.getTime() - offset).toISOString().slice(0, 16);
+};
 
 function NewsManager({
   open,
@@ -899,6 +935,10 @@ function FocusManager({
                     image: "/assets/tct/images/turnier-itf.jpg",
                     date: eventDate(item),
                     href: "/turniere",
+                    spectatorsAllowed: item.spectators_allowed,
+                    admissionPriceCents: item.admission_price_cents,
+                    venueName: item.venue_name ?? undefined,
+                    venueAddress: item.venue_address ?? undefined,
                   })
                 }
               >
@@ -1184,6 +1224,7 @@ function App() {
   const [mediaFiles, setMediaFiles] = useState<MediaFile[]>([]);
   const [liveEvents, setLiveEvents] = useState<PublicEvent[]>([]);
   const [adminEvents, setAdminEvents] = useState<PublicEvent[]>([]);
+  const [editingEvent, setEditingEvent] = useState<PublicEvent | null>(null);
   const [contactMessages, setContactMessages] = useState<ContactMessage[]>([]);
   const [replyingToContact, setReplyingToContact] = useState<ContactMessage | null>(null);
   const [contactReplyText, setContactReplyText] = useState("");
@@ -1307,7 +1348,10 @@ function App() {
         .maybeSingle();
       const item = data?.value?.item;
       if (item && typeof item === "object")
-        setFeaturedContent(item as FeaturedContent);
+        setFeaturedContent({
+          ...defaultFeaturedContent,
+          ...(item as Partial<FeaturedContent>),
+        });
     };
     void loadFeaturedContent();
   }, []);
@@ -1380,7 +1424,7 @@ function App() {
           .limit(3),
         client
           .from("events")
-          .select("id,title,category,description,starts_at,ends_at,registration_enabled")
+          .select("id,title,category,description,starts_at,ends_at,registration_enabled,spectators_allowed,admission_price_cents,venue_name,venue_address")
           .eq("status", "published")
           .order("starts_at", { ascending: true })
           .limit(4),
@@ -1724,7 +1768,7 @@ function App() {
     if (!supabase) return;
     const { data } = await supabase
       .from("events")
-      .select("id,title,category,description,starts_at,ends_at,registration_enabled")
+      .select("id,title,category,description,starts_at,ends_at,registration_enabled,spectators_allowed,admission_price_cents,venue_name,venue_address")
       .order("starts_at", { ascending: true })
       .limit(100);
     if (data) setAdminEvents(data);
@@ -2352,22 +2396,76 @@ function App() {
     const form = new FormData(event.currentTarget);
     const startsAt = String(form.get("starts_at"));
     const endsAt = String(form.get("ends_at"));
-    const { error } = await supabase.from("events").insert({
+    if (endsAt && new Date(endsAt).getTime() <= new Date(startsAt).getTime()) {
+      setAdminNotice("Das Ende muss nach dem Beginn liegen.");
+      return;
+    }
+    const spectatorsAllowed = form.get("spectators_allowed") === "on";
+    const priceInput = String(form.get("admission_price") ?? "")
+      .trim()
+      .replace(",", ".");
+    const priceNumber = priceInput === "" ? null : Number(priceInput);
+    if (
+      spectatorsAllowed &&
+      (priceNumber === null || !Number.isFinite(priceNumber) || priceNumber < 0)
+    ) {
+      setAdminNotice(
+        "Bitte gib einen gültigen Eintrittspreis ein. Für kostenlosen Eintritt trägst du 0 ein.",
+      );
+      return;
+    }
+    const payload = {
       title: String(form.get("title")),
       category: String(form.get("category")) || null,
       description: String(form.get("description")) || null,
       starts_at: startsAt ? new Date(startsAt).toISOString() : null,
       ends_at: endsAt ? new Date(endsAt).toISOString() : null,
       registration_enabled: form.get("registration_enabled") === "on",
+      spectators_allowed: spectatorsAllowed,
+      admission_price_cents:
+        spectatorsAllowed && priceNumber !== null
+          ? Math.round(priceNumber * 100)
+          : null,
+      venue_name: String(form.get("venue_name")).trim() || null,
+      venue_address: String(form.get("venue_address")).trim() || null,
       status: "published",
-    });
+    };
+    const eventSelect =
+      "id,title,category,description,starts_at,ends_at,registration_enabled,spectators_allowed,admission_price_cents,venue_name,venue_address";
+    const { data: savedEvent, error } = editingEvent
+      ? await supabase
+          .from("events")
+          .update(payload)
+          .eq("id", editingEvent.id)
+          .select(eventSelect)
+          .single()
+      : await supabase.from("events").insert(payload).select(eventSelect).single();
     if (error) {
       setAdminNotice(
         `Termin konnte nicht gespeichert werden: ${error.message}`,
       );
       return;
     }
-    setAdminNotice("Termin wurde veröffentlicht.");
+    if (savedEvent) {
+      setLiveEvents((items) => {
+        const next = editingEvent
+          ? items.map((item) =>
+              item.id === savedEvent.id ? (savedEvent as PublicEvent) : item,
+            )
+          : [...items, savedEvent as PublicEvent];
+        return next
+          .sort(
+            (a, b) =>
+              new Date(a.starts_at ?? 0).getTime() -
+              new Date(b.starts_at ?? 0).getTime(),
+          )
+          .slice(0, 4);
+      });
+    }
+    setAdminNotice(
+      editingEvent ? "Termin wurde aktualisiert." : "Termin wurde veröffentlicht.",
+    );
+    setEditingEvent(null);
     await loadAdminEvents();
     event.currentTarget.reset();
   };
@@ -2380,6 +2478,8 @@ function App() {
       return;
     }
     setAdminNotice("Termin wurde gelöscht.");
+    setLiveEvents((events) => events.filter((event) => event.id !== id));
+    if (editingEvent?.id === id) setEditingEvent(null);
     await loadAdminEvents();
   };
 
@@ -3063,14 +3163,31 @@ function App() {
                   <span>
                     <CalendarDays size={17} /> {featuredContent.date}
                   </span>
-                  <a
-                    href="https://www.google.com/maps/search/?api=1&query=Am+Stadion+1%2C+54292+Trier"
-                    target="_blank"
-                    rel="noreferrer"
-                    aria-label="Tennisclub Trier in Google Maps öffnen"
-                  >
-                    <MapPin size={17} /> Am Stadion 1, 54292 Trier
-                  </a>
+                  {featuredContent.kind === "event" &&
+                    featuredContent.venueAddress && (
+                      <a
+                        href={eventMapsUrl(featuredContent.venueAddress)}
+                        target="_blank"
+                        rel="noreferrer"
+                        aria-label={`${featuredContent.venueName ?? "Veranstaltungsort"} in Google Maps öffnen`}
+                      >
+                        <MapPin size={17} />
+                        {featuredContent.venueName
+                          ? `${featuredContent.venueName} · `
+                          : ""}
+                        {featuredContent.venueAddress}
+                      </a>
+                    )}
+                  {featuredContent.kind === "event" &&
+                    featuredContent.spectatorsAllowed && (
+                      <span>
+                        <Euro size={17} />
+                        {featuredContent.admissionLabel ??
+                          eventAdmissionLabel(
+                            featuredContent.admissionPriceCents,
+                          )}
+                      </span>
+                    )}
                 </div>
                 <a className="circle-link" href={featuredContent.href}>
                   {featuredContent.kind === "event"
@@ -3501,8 +3618,9 @@ function App() {
               <div className="live-events">
                 {liveEvents.map((event) => {
                   const ended = eventIsEnded(event);
-                  const content = <><p className="kicker">{ended ? "BEENDET" : event.category ?? "CLUB TERMIN"}</p><h3>{event.title}</h3><p>{event.starts_at ? new Intl.DateTimeFormat("de-DE", { dateStyle: "medium", timeStyle: "short" }).format(new Date(event.starts_at)) : "Datum folgt"}</p>{event.description && <span>{event.description}</span>}{!ended && <b>{event.registration_enabled ? "Frage / Anmeldung" : "Frage zum Turnier"} <ArrowRight size={16} /></b>}</>;
-                  return ended ? <article className="is-ended" key={event.id}>{content}</article> : <a className="live-event-link" key={event.id} href={`/turnier-anmeldung?turnier=${encodeURIComponent(event.title)}&anmeldung=${event.registration_enabled ? "1" : "0"}`}>{content}</a>;
+                  const content = <><p className="kicker">{ended ? "BEENDET" : event.category ?? "CLUB TERMIN"}</p><h3>{event.title}</h3><p>{event.starts_at ? new Intl.DateTimeFormat("de-DE", { dateStyle: "medium", timeStyle: "short" }).format(new Date(event.starts_at)) : "Datum folgt"}</p>{event.description && <span>{event.description}</span>}{event.spectators_allowed && <span className="live-event-admission"><Euro size={14} /> {eventAdmissionLabel(event.admission_price_cents)}</span>}{event.venue_address && <span className="live-event-venue"><MapPin size={14} /> {event.venue_name ? `${event.venue_name} · ` : ""}{event.venue_address}</span>}{!ended && <b>{event.registration_enabled ? "Frage / Anmeldung" : "Frage zum Turnier"} <ArrowRight size={16} /></b>}</>;
+                  if (ended) return <article className="is-ended" key={event.id}>{content}</article>;
+                  return <article className="live-event-card" key={event.id}><a className="live-event-link" href={`/turnier-anmeldung?turnier=${encodeURIComponent(event.title)}&anmeldung=${event.registration_enabled ? "1" : "0"}`}>{content}</a>{event.venue_address && <a className="live-event-maps" href={eventMapsUrl(event.venue_address)} target="_blank" rel="noreferrer"><MapPin size={15} /> Route in Google Maps <ArrowRight size={14} /></a>}</article>;
                 })}
               </div>
             )}
@@ -5363,7 +5481,7 @@ function App() {
         >
           <button
             className="admin-close"
-            onClick={() => setAdminEditor(null)}
+            onClick={() => { setEditingEvent(null); setAdminEditor(null); }}
             aria-label="Terminverwaltung schließen"
           >
             <X size={23} />
@@ -5384,19 +5502,20 @@ function App() {
               </p>
             </div>
             <div className="event-manager-grid">
-              <form onSubmit={saveEvent} className="event-create-form">
-                <p className="kicker">NEU ANLEGEN</p>
+              <form key={editingEvent?.id ?? "new-event"} onSubmit={saveEvent} className="event-create-form">
+                <p className="kicker">{editingEvent ? "TERMIN BEARBEITEN" : "NEU ANLEGEN"}</p>
                 <label>
                   Titel
                   <input
                     required
                     name="title"
                     placeholder="Name der Veranstaltung"
+                    defaultValue={editingEvent?.title ?? ""}
                   />
                 </label>
                 <label>
                   Kategorie
-                  <select name="category" defaultValue="Club">
+                  <select name="category" defaultValue={editingEvent?.category ?? "Club"}>
                     <option value="Club">Club-Termin</option>
                     <option value="ITF">ITF</option>
                     <option value="Herren">Herren</option>
@@ -5408,25 +5527,52 @@ function App() {
                 <div className="event-date-row">
                   <label>
                     Beginn
-                    <input required name="starts_at" type="datetime-local" />
+                    <input required name="starts_at" type="datetime-local" defaultValue={eventDateTimeInput(editingEvent?.starts_at)} />
                   </label>
                   <label>
                     Ende
-                    <input name="ends_at" type="datetime-local" />
+                    <input name="ends_at" type="datetime-local" defaultValue={eventDateTimeInput(editingEvent?.ends_at)} />
                   </label>
                 </div>
-                <label className="event-registration-check"><input name="registration_enabled" type="checkbox" /> Anmeldung über die Website erlauben <small>Aus lassen bei Einladungsturnieren wie dem ITF.</small></label>
+                <div className="event-option-grid">
+                  <label className="event-registration-check"><input name="registration_enabled" type="checkbox" defaultChecked={editingEvent?.registration_enabled ?? false} /> Anmeldung über die Website erlauben <small>Teilnehmende können direkt eine Anmeldung senden.</small></label>
+                  <label className="event-registration-check"><input name="spectators_allowed" type="checkbox" defaultChecked={editingEvent?.spectators_allowed ?? false} /> Zuschauer erlaubt <small>Aktivieren, wenn Besucher das Turnier ansehen können.</small></label>
+                </div>
+                <label>
+                  Eintrittspreis in Euro <small>0 bedeutet Eintritt frei</small>
+                  <input
+                    required
+                    name="admission_price"
+                    type="number"
+                    min="0"
+                    step="0.01"
+                    defaultValue={editingEvent?.spectators_allowed && editingEvent.admission_price_cents !== null ? (editingEvent.admission_price_cents / 100).toFixed(2) : "0.00"}
+                  />
+                </label>
+                <div className="event-venue-row">
+                  <label>
+                    Name des Ortes
+                    <input name="venue_name" placeholder="z. B. TC Trier 1888 e.V." defaultValue={editingEvent?.venue_name ?? "TC Trier 1888 e.V."} />
+                  </label>
+                  <label>
+                    Vollständige Adresse
+                    <input required name="venue_address" placeholder="Straße, PLZ Ort" defaultValue={editingEvent?.venue_address ?? "Am Stadion 1, 54292 Trier"} />
+                    <small>Aus dieser Adresse wird automatisch der Google-Maps-Link.</small>
+                  </label>
+                </div>
                 <label>
                   Beschreibung
                   <textarea
                     name="description"
                     rows={3}
                     placeholder="Wichtige Informationen zum Termin"
+                    defaultValue={editingEvent?.description ?? ""}
                   />
                 </label>
                 <button className="button button-light" type="submit">
-                  Termin veröffentlichen <CalendarDays size={17} />
+                  {editingEvent ? "Änderungen speichern" : "Termin veröffentlichen"} <CalendarDays size={17} />
                 </button>
+                {editingEvent && <button className="event-edit-cancel" type="button" onClick={() => setEditingEvent(null)}>Bearbeitung abbrechen</button>}
               </form>
               <section className="event-admin-list-wrap">
                 <div className="event-list-head">
@@ -5453,14 +5599,19 @@ function App() {
                                 }).format(new Date(event.starts_at))
                               : "Datum folgt"}
                           </p>
+                          {event.venue_address && <small>{event.venue_name ? `${event.venue_name} · ` : ""}{event.venue_address}</small>}
+                          <small>{event.spectators_allowed ? eventAdmissionLabel(event.admission_price_cents) : "Keine Zuschauerfreigabe"}</small>
                         </div>
-                        <button
-                          type="button"
-                          onClick={() => void deleteEvent(event.id)}
-                          aria-label={`${event.title} löschen`}
-                        >
-                          Löschen
-                        </button>
+                        <div className="event-admin-actions">
+                          <button type="button" onClick={() => setEditingEvent(event)}>Bearbeiten</button>
+                          <button
+                            type="button"
+                            onClick={() => void deleteEvent(event.id)}
+                            aria-label={`${event.title} löschen`}
+                          >
+                            Löschen
+                          </button>
+                        </div>
                       </article>
                     ))
                   ) : (
