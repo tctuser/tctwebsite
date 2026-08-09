@@ -3858,7 +3858,7 @@ function App() {
             <div className="container public-partner-list">
               <p className="eyebrow"><span /> Unsere Partner</p>
               <div>{livePartners.map((item) => <a key={item.id} href={item.website} target="_blank" rel="noreferrer" aria-label={`${item.name} – Website öffnen`}>
-                {item.logo ? <img src={item.logo} alt={item.name} /> : <strong className="partner-name">{item.name}</strong>}
+                {item.logo ? <img src={item.logo} alt={item.name} /> : <span className={`partner-logo-sprite partner-logo-${item.id}`} role="img" aria-label={item.name} />}
                 {item.note && <small>{item.note}</small>}
               </a>)}</div>
             </div>
@@ -3963,7 +3963,7 @@ function App() {
               </div>
               <div className="home-partner-logos">
                 {livePartners.slice(0, 6).map((item) => <a key={item.id} href={item.website} target="_blank" rel="noreferrer" aria-label={`${item.name} – Website öffnen`}>
-                  {item.logo ? <img src={item.logo} alt={item.name} /> : <strong className="home-partner-name">{item.name}</strong>}
+                  {item.logo ? <img src={item.logo} alt={item.name} /> : <span className={`partner-logo-sprite partner-logo-${item.id}`} role="img" aria-label={item.name} />}
                 </a>)}
               </div>
               <a className="text-link" href="/partner">Partner werden <ArrowRight size={17} /></a>
