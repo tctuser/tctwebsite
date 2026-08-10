@@ -1388,7 +1388,7 @@ function ClubAssistant({
 
 const KNOWN_SECTION_PAGES = ["club", "anlage", "teams", "turniere", "news", "mitglied-werden", "service", "kontakt", "galerie", "partner", "spielpartner", "impressum"];
 const KNOWN_PATHS = ["", "/", "/booking", "/turnier-anmeldung", "/datenschutz", ...KNOWN_SECTION_PAGES.map((page) => `/${page}`)];
-const sectionPageInfo: Record<string, { eyebrow: string; title: string; accent: string; text: string }> = {
+const sectionPageInfo: Record<string, { eyebrow: string; title: string; accent: string; text: string; docTitle?: string }> = {
   club: { eyebrow: "Tennisclub Trier 1888 e.V.", title: "Der", accent: "Club.", text: "Tradition, Menschen und das Clubleben am Moselstadion." },
   anlage: { eyebrow: "Am Moselstadion", title: "Unsere", accent: "Anlage.", text: "Tennis, Padel, Halle und Gastronomie an einem Ort." },
   teams: { eyebrow: "Gemeinsam antreten", title: "Unsere", accent: "Teams.", text: "Damen, Herren und Jugend – alle Mannschaften des TCT." },
@@ -1400,7 +1400,7 @@ const sectionPageInfo: Record<string, { eyebrow: string; title: string; accent: 
   galerie: { eyebrow: "Momente vom Moselstadion", title: "TCT", accent: "Galerie.", text: "Mannschaften, Turniere, Anlage und Clubleben in Bildern." },
   partner: { eyebrow: "Gemeinsam für Trier", title: "Partner", accent: "werden.", text: "Sichtbarkeit, Sport und echtes Engagement für den Tennisclub Trier." },
   spielpartner: { eyebrow: "TCT Mitgliederbörse", title: "Spielpartner", accent: "finden.", text: "Finde unkompliziert ein Match, einen festen Termin oder neue Spielpartner im Club." },
-  impressum: { eyebrow: "Tennisclub Trier 1888 e.V.", title: "Impres", accent: "sum.", text: "Angaben zum Anbieter und Kontaktmöglichkeiten des Tennisclub Trier." },
+  impressum: { eyebrow: "Tennisclub Trier 1888 e.V.", title: "Impres", accent: "sum.", docTitle: "Impressum", text: "Angaben zum Anbieter und Kontaktmöglichkeiten des Tennisclub Trier." },
 };
 
 function App() {
@@ -1484,7 +1484,7 @@ function App() {
     let title = siteTitle;
     let description = siteDescription;
     if (pageInfo) {
-      title = `${pageInfo.title} ${pageInfo.accent.replace(/\.$/, "")} — TCT 1888`;
+      title = `${pageInfo.docTitle ?? `${pageInfo.title} ${pageInfo.accent.replace(/\.$/, "")}`} — TCT 1888`;
       description = pageInfo.text;
     } else if (isBookingPage) {
       title = "Platz buchen — TCT 1888";
@@ -1648,6 +1648,7 @@ function App() {
         setMenuOpen(false);
         setSearchOpen(false);
         setPrivacyOpen(false);
+        if (window.location.pathname.replace(/\/+$/, "") === "/datenschutz") navigate("/");
         setAdminPanel(null);
         setAdminEditor(null);
         setAccountOpen(false);
