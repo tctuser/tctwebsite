@@ -37,9 +37,12 @@ import "./tournament-contact.css";
 import "./site-pages.css";
 import "./motion-plus.css";
 import App from "./App";
+import { ErrorBoundary } from "./ErrorBoundary";
 
 createRoot(document.getElementById("root")!).render(
   <StrictMode>
-    <App />
+    <ErrorBoundary>
+      <App />
+    </ErrorBoundary>
   </StrictMode>,
 );

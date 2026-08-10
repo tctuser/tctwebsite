@@ -1388,6 +1388,20 @@ function ClubAssistant({
 
 const KNOWN_SECTION_PAGES = ["club", "anlage", "teams", "turniere", "news", "mitglied-werden", "service", "kontakt", "galerie", "partner", "spielpartner", "impressum"];
 const KNOWN_PATHS = ["", "/", "/booking", "/turnier-anmeldung", "/datenschutz", ...KNOWN_SECTION_PAGES.map((page) => `/${page}`)];
+const sectionPageInfo: Record<string, { eyebrow: string; title: string; accent: string; text: string }> = {
+  club: { eyebrow: "Tennisclub Trier 1888 e.V.", title: "Der", accent: "Club.", text: "Tradition, Menschen und das Clubleben am Moselstadion." },
+  anlage: { eyebrow: "Am Moselstadion", title: "Unsere", accent: "Anlage.", text: "Tennis, Padel, Halle und Gastronomie an einem Ort." },
+  teams: { eyebrow: "Gemeinsam antreten", title: "Unsere", accent: "Teams.", text: "Damen, Herren und Jugend – alle Mannschaften des TCT." },
+  turniere: { eyebrow: "Tennis in Trier", title: "Unsere", accent: "Turniere.", text: "Aktuelle Termine, Turnierdetails und direkte Fragen an die Turnierleitung." },
+  news: { eyebrow: "Was den Club bewegt", title: "TCT", accent: "News.", text: "Aktuelles, Rückblicke und das komplette Vereinsarchiv." },
+  "mitglied-werden": { eyebrow: "Willkommen im TCT", title: "Mitglied", accent: "werden.", text: "Beiträge ansehen, Unterlagen öffnen und den ersten Schritt in den Club machen." },
+  service: { eyebrow: "Alles auf einen Blick", title: "TCT", accent: "Service.", text: "Offizielle Unterlagen und wichtige Downloads für den Cluballtag." },
+  kontakt: { eyebrow: "Wir sind für dich da", title: "Sag", accent: "Hallo.", text: "Fragen, Interesse oder ein erstes Kennenlernen – wir freuen uns auf dich." },
+  galerie: { eyebrow: "Momente vom Moselstadion", title: "TCT", accent: "Galerie.", text: "Mannschaften, Turniere, Anlage und Clubleben in Bildern." },
+  partner: { eyebrow: "Gemeinsam für Trier", title: "Partner", accent: "werden.", text: "Sichtbarkeit, Sport und echtes Engagement für den Tennisclub Trier." },
+  spielpartner: { eyebrow: "TCT Mitgliederbörse", title: "Spielpartner", accent: "finden.", text: "Finde unkompliziert ein Match, einen festen Termin oder neue Spielpartner im Club." },
+  impressum: { eyebrow: "Tennisclub Trier 1888 e.V.", title: "Impres", accent: "sum.", text: "Angaben zum Anbieter und Kontaktmöglichkeiten des Tennisclub Trier." },
+};
 
 function App() {
   // Client-seitiges Routing: currentPath ist reaktiver State statt eines
@@ -1457,22 +1471,37 @@ function App() {
   const sectionPage = KNOWN_SECTION_PAGES.find(
     (page) => currentPath === `/${page}`,
   );
-  const sectionPageInfo: Record<string, { eyebrow: string; title: string; accent: string; text: string }> = {
-    club: { eyebrow: "Tennisclub Trier 1888 e.V.", title: "Der", accent: "Club.", text: "Tradition, Menschen und das Clubleben am Moselstadion." },
-    anlage: { eyebrow: "Am Moselstadion", title: "Unsere", accent: "Anlage.", text: "Tennis, Padel, Halle und Gastronomie an einem Ort." },
-    teams: { eyebrow: "Gemeinsam antreten", title: "Unsere", accent: "Teams.", text: "Damen, Herren und Jugend – alle Mannschaften des TCT." },
-    turniere: { eyebrow: "Tennis in Trier", title: "Unsere", accent: "Turniere.", text: "Aktuelle Termine, Turnierdetails und direkte Fragen an die Turnierleitung." },
-    news: { eyebrow: "Was den Club bewegt", title: "TCT", accent: "News.", text: "Aktuelles, Rückblicke und das komplette Vereinsarchiv." },
-    "mitglied-werden": { eyebrow: "Willkommen im TCT", title: "Mitglied", accent: "werden.", text: "Beiträge ansehen, Unterlagen öffnen und den ersten Schritt in den Club machen." },
-    service: { eyebrow: "Alles auf einen Blick", title: "TCT", accent: "Service.", text: "Offizielle Unterlagen und wichtige Downloads für den Cluballtag." },
-    kontakt: { eyebrow: "Wir sind für dich da", title: "Sag", accent: "Hallo.", text: "Fragen, Interesse oder ein erstes Kennenlernen – wir freuen uns auf dich." },
-    galerie: { eyebrow: "Momente vom Moselstadion", title: "TCT", accent: "Galerie.", text: "Mannschaften, Turniere, Anlage und Clubleben in Bildern." },
-    partner: { eyebrow: "Gemeinsam für Trier", title: "Partner", accent: "werden.", text: "Sichtbarkeit, Sport und echtes Engagement für den Tennisclub Trier." },
-    spielpartner: { eyebrow: "TCT Mitgliederbörse", title: "Spielpartner", accent: "finden.", text: "Finde unkompliziert ein Match, einen festen Termin oder neue Spielpartner im Club." },
-    impressum: { eyebrow: "Tennisclub Trier 1888 e.V.", title: "Impres", accent: "sum.", text: "Angaben zum Anbieter und Kontaktmöglichkeiten des Tennisclub Trier." },
-  };
   const pageInfo = sectionPage ? sectionPageInfo[sectionPage] : null;
   const isFocusedPage = !isHomePage;
+
+  // Seitentitel & Meta-Description pro Route — seit dem Umstieg auf
+  // Client-Side-Routing (kein Full-Reload mehr) muss das jetzt manuell
+  // passieren, sonst zeigt der Browser-Tab auf jeder Seite denselben Titel.
+  useEffect(() => {
+    const siteTitle = "TCT 1888 — Tennisclub Trier";
+    const siteDescription =
+      "Tennisclub Trier 1888 e.V. – Tennis, Padel und Gemeinschaft am Moselstadion.";
+    let title = siteTitle;
+    let description = siteDescription;
+    if (pageInfo) {
+      title = `${pageInfo.title} ${pageInfo.accent.replace(/\.$/, "")} — TCT 1888`;
+      description = pageInfo.text;
+    } else if (isBookingPage) {
+      title = "Platz buchen — TCT 1888";
+      description = "Freie Tennis-, Hallen- und Padelplätze direkt online buchen.";
+    } else if (isTournamentContactPage) {
+      title = "Turnier-Anfrage — TCT 1888";
+      description = "Fragen oder Anmeldung zu einem Turnier des Tennisclub Trier.";
+    } else if (currentPath === "/datenschutz") {
+      title = "Datenschutz — TCT 1888";
+    } else if (!isHomePage && !isKnownPath) {
+      title = "Seite nicht gefunden — TCT 1888";
+    }
+    document.title = title;
+    document
+      .querySelector('meta[name="description"]')
+      ?.setAttribute("content", description);
+  }, [currentPath, pageInfo, isBookingPage, isTournamentContactPage, isHomePage, isKnownPath]);
   const selectedTournamentTitle = new URLSearchParams(currentSearch).get("turnier") ?? "Allgemeine Turnieranfrage";
   const registrationAllowed = new URLSearchParams(currentSearch).get("anmeldung") !== "0";
   const [menuOpen, setMenuOpen] = useState(false);
@@ -1618,6 +1647,15 @@ function App() {
       if (event.key === "Escape") {
         setMenuOpen(false);
         setSearchOpen(false);
+        setPrivacyOpen(false);
+        setAdminPanel(null);
+        setAdminEditor(null);
+        setAccountOpen(false);
+        setAuditOpen(false);
+        setTutorialOpen(false);
+        setSelectedNews(null);
+        setSelectedTournament(null);
+        setSelectedTeamPhoto(null);
       }
     };
     window.addEventListener("scroll", onScroll, { passive: true });
@@ -1874,6 +1912,10 @@ function App() {
     const email = String(form.get("email") ?? "");
     const message = String(form.get("message") ?? "");
     setContactError("");
+    if (String(form.get("website") ?? "").trim()) {
+      setFormSent(true);
+      return;
+    }
     if (!supabase) {
       const subject = encodeURIComponent(`Mitgliedschafts-Anfrage von ${name}`);
       const body = encodeURIComponent(
@@ -1903,6 +1945,10 @@ function App() {
     const company = String(form.get("company") ?? "").trim();
     const message = String(form.get("message") ?? "").trim();
     setPartnerInquiryError("");
+    if (String(form.get("website") ?? "").trim()) {
+      setPartnerInquirySent(true);
+      return;
+    }
     const subject = "Partnerschaftsanfrage";
     const fullMessage = `[${subject}]${company ? ` Unternehmen: ${company}` : ""}\n\n${message}`;
     if (!supabase) {
@@ -1949,6 +1995,10 @@ function App() {
     const inquiryType = String(form.get("inquiryType") ?? "question");
     const message = String(form.get("message") ?? "").trim();
     setTournamentFormError("");
+    if (String(form.get("website") ?? "").trim()) {
+      setTournamentFormSent(true);
+      return;
+    }
     if (!supabase) {
       setTournamentFormError("Das Turnier-Postfach ist gerade nicht verfügbar. Bitte versuche es später erneut.");
       return;
@@ -4435,6 +4485,7 @@ function App() {
               {tournamentFormSent ? <div className="tournament-contact-success"><Check size={30} /><h2>Gesendet.</h2><p>Danke! Die Turnierleitung meldet sich bei dir per E-Mail.</p></div> : <>
                 <p className="kicker">DEINE ANFRAGE</p>
                 <label>Anliegen<select name="inquiryType" defaultValue="question"><option value="question">Frage zum Turnier</option>{registrationAllowed && <option value="registration">Anmeldung / Teilnahme</option>}</select></label>
+                <input type="text" name="website" className="hp-field" tabIndex={-1} autoComplete="off" aria-hidden="true" />
                 <label>Name<input required name="name" minLength={2} maxLength={120} autoComplete="name" placeholder="Vor- und Nachname" /></label>
                 <label>E-Mail<input required name="email" type="email" autoComplete="email" placeholder="name@beispiel.de" /></label>
                 <label>Nachricht <small>{registrationAllowed ? "optional bei einer Anmeldung" : "Die Turnierleitung meldet sich bei dir."}</small><textarea name="message" rows={5} maxLength={4000} placeholder={registrationAllowed ? "Frage, Altersklasse, LK oder weitere Hinweise …" : "Deine Frage zum Turnier …"} /></label>
@@ -4779,6 +4830,7 @@ function App() {
               ) : (
                 <>
                   <p className="kicker">INTERESSE AN EINER MITGLIEDSCHAFT</p>
+                  <input type="text" name="website" className="hp-field" tabIndex={-1} autoComplete="off" aria-hidden="true" />
                   <label>
                     Name
                     <input
@@ -4927,6 +4979,7 @@ function App() {
                     <p>Erzähl uns kurz, wer ihr seid und wie ihr den TCT unterstützen möchtet. Der Vorstand meldet sich persönlich bei euch.</p>
                   </div>
                   <div className="partner-inquiry-fields">
+                    <input type="text" name="website" className="hp-field" tabIndex={-1} autoComplete="off" aria-hidden="true" />
                     <label>Name<input required name="name" placeholder="Vor- und Nachname" /></label>
                     <label>Unternehmen <small>optional</small><input name="company" placeholder="Name des Unternehmens" /></label>
                     <label>E-Mail<input required type="email" name="email" placeholder="name@unternehmen.de" /></label>
