@@ -1489,6 +1489,13 @@ function App() {
   >("login");
   const [passwordResetIdentifier, setPasswordResetIdentifier] = useState("");
   const [pendingRegistrationEmail, setPendingRegistrationEmail] = useState("");
+  // Nur für den Weg "frisch registriert -> Code bestätigen" nötig, damit wir
+  // die Person danach direkt einloggen können, statt sie ein zweites Mal
+  // Zugangsdaten eingeben zu lassen. Kommt man stattdessen über einen
+  // Login-Versuch auf ein noch unbestätigtes Konto, existiert schon eine
+  // Session (signInWithPassword läuft dort schon durch) und dieses Feld
+  // bleibt leer.
+  const [pendingRegistrationPassword, setPendingRegistrationPassword] = useState("");
   const [resendingCode, setResendingCode] = useState(false);
   const [showAuthPassword, setShowAuthPassword] = useState(false);
   const [adminNotice, setAdminNotice] = useState("");
@@ -2684,6 +2691,7 @@ function App() {
     const formElement = event.currentTarget;
     const form = new FormData(formElement);
     const registrationEmail = String(form.get("email")).trim().toLowerCase();
+    const registrationPassword = String(form.get("password"));
     const { data, error } = await supabase.functions.invoke(
       "member-registration",
       {
@@ -2691,7 +2699,7 @@ function App() {
           displayName: String(form.get("displayName")).trim(),
           username: String(form.get("username")).trim(),
           email: registrationEmail,
-          password: String(form.get("password")),
+          password: registrationPassword,
         },
       },
     );
@@ -2705,6 +2713,7 @@ function App() {
     formElement.reset();
     if (data?.needsEmailConfirmation) {
       setPendingRegistrationEmail(registrationEmail);
+      setPendingRegistrationPassword(registrationPassword);
       setAuthMode("verify");
       setAdminNotice(
         "Der sechsstellige Code wurde versendet. Bitte prüfe auch deinen Spam-Ordner.",
@@ -2737,8 +2746,43 @@ function App() {
       setAdminNotice(detail);
       return;
     }
-    await supabase.auth.signOut();
+    const email = pendingRegistrationEmail;
+    const password = pendingRegistrationPassword;
     setPendingRegistrationEmail("");
+    setPendingRegistrationPassword("");
+
+    // Kam die Person über einen Login-Versuch auf ein noch unbestätigtes
+    // Konto hierher, läuft bereits eine Session (signInWithPassword ist dort
+    // schon durchgelaufen) — die reicht aus, kein erneuter Login nötig.
+    const { data: existingSession } = await supabase.auth.getSession();
+    if (existingSession.session?.user?.email === email) {
+      setAuthMode("login");
+      await applyAuthenticatedUser(
+        existingSession.session.user.id,
+        existingSession.session.user.email ?? null,
+      );
+      return;
+    }
+
+    // Frische Registrierung: bislang existiert noch keine Session (die
+    // Registrierung legt das Konto server-seitig an, ohne den Browser
+    // einzuloggen) — jetzt mit dem gemerkten Passwort direkt anmelden,
+    // damit die Person nicht ein zweites Mal Zugangsdaten eingeben muss.
+    if (password) {
+      const { data: signInData, error: signInError } =
+        await supabase.auth.signInWithPassword({ email, password });
+      if (!signInError && signInData.user) {
+        setAuthMode("login");
+        await applyAuthenticatedUser(
+          signInData.user.id,
+          signInData.user.email ?? null,
+        );
+        return;
+      }
+    }
+
+    // Fallback, falls beides nicht greift (z. B. Passwort zwischenzeitlich
+    // geändert): wie bisher zur manuellen Anmeldung weiterleiten.
     setAuthMode("login");
     setAdminPanel("login");
     setAdminNotice("E-Mail bestätigt. Du kannst dich jetzt anmelden.");
