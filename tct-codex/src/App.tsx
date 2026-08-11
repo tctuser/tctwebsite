@@ -1,4 +1,4 @@
-import { lazy, Suspense, useEffect, useState, type FormEvent } from "react";
+import { lazy, Suspense, useEffect, useState, type CSSProperties, type FormEvent } from "react";
 import {
   ArrowLeft,
   ArrowDownRight,
@@ -111,6 +111,12 @@ const defaultSiteTheme: SiteTheme = {
   accentColor: "#cef166",
   backgroundColor: "#f5f3ee",
 };
+const courtAccentPresets: { key: string; label: string; color: string }[] = [
+  { key: "standard", label: "Standard", color: defaultSiteTheme.accentColor },
+  { key: "sandplatz", label: "Sandplatz", color: "#e2794f" },
+  { key: "hartplatz", label: "Hartplatz", color: "#6fb3d9" },
+  { key: "wimbledon", label: "Wimbledon", color: "#5c9a4a" },
+];
 const headingFontFamilies: Record<SiteTheme["headingFont"], string> = {
   "dm-serif": "'DM Serif Display', Georgia, serif",
   playfair: "'Playfair Display', Georgia, serif",
@@ -3241,6 +3247,22 @@ function App() {
     const { error } = await supabase.from("club_content").upsert({ key: "teams", value: { items }, updated_by: adminUserId });
     if (error) { setAdminNotice(`Konnte nicht gelöscht werden: ${friendlyDbError(error)}`); return; }
     setLiveTeams(items); setAdminNotice(`„${item.name}“ wurde gelöscht.`);
+  };
+
+  const saveAccentPreset = async (accentColor: string) => {
+    if (!supabase || !adminUserId) return;
+    const nextTheme: SiteTheme = { ...liveSiteTheme, accentColor };
+    const { error } = await supabase.from("club_content").upsert({
+      key: "site_theme",
+      value: { settings: nextTheme },
+      updated_by: adminUserId,
+    });
+    if (error) {
+      setAdminNotice(`Farbe konnte nicht gespeichert werden: ${friendlyDbError(error)}`);
+      return;
+    }
+    setLiveSiteTheme(nextTheme);
+    setAdminNotice("Die neue Akzentfarbe ist für alle Besucher sichtbar.");
   };
 
   const saveClubSettings = async (event: FormEvent<HTMLFormElement>) => {
@@ -6959,6 +6981,25 @@ function App() {
             <p className="editor-help">
               Diese Angaben steuern die Buchungsbuttons auf der Website. Nutze
               vollständige Internetadressen mit https://.
+            </p>
+            <p className="kicker">AKZENTFARBE (BUTTONS &amp; HIGHLIGHTS)</p>
+            <div className="accent-preset-row">
+              {courtAccentPresets.map((preset) => (
+                <button
+                  key={preset.key}
+                  type="button"
+                  className={`accent-preset${liveSiteTheme.accentColor === preset.color ? " active" : ""}`}
+                  style={{ "--preset-color": preset.color } as CSSProperties}
+                  onClick={() => void saveAccentPreset(preset.color)}
+                >
+                  <span />
+                  {preset.label}
+                </button>
+              ))}
+            </div>
+            <p className="editor-help">
+              Gilt sofort für die ganze Website und alle Besucher, auch ohne
+              eigenes Konto.
             </p>
             <form onSubmit={saveClubSettings}>
               <label>
