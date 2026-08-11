@@ -443,6 +443,20 @@ async function edgeFunctionErrorMessage(
   return error instanceof Error ? error.message : fallback;
 }
 
+// Postgres/PostgREST errors leak technical strings ("duplicate key value
+// violates unique constraint …") straight into the admin UI. Translate the
+// common cases so non-technical Vorstand-Admins get something they can act on.
+function friendlyDbError(error: { code?: string; message?: string } | null | undefined): string {
+  const code = error?.code;
+  if (code === "23505") return "Dieser Eintrag existiert bereits.";
+  if (code === "23503") return "Der Eintrag wird an anderer Stelle noch verwendet und kann so nicht geändert werden.";
+  if (code === "23502") return "Bitte fülle alle Pflichtfelder aus.";
+  if (code === "23514") return "Die Eingabe erfüllt nicht die Anforderungen (z. B. Textlänge).";
+  if (code === "42501" || code === "PGRST301") return "Keine Berechtigung oder Sitzung abgelaufen. Bitte neu anmelden.";
+  if (error?.message === "Failed to fetch") return "Keine Verbindung zum Server. Bitte Internetverbindung prüfen.";
+  return error?.message ?? "Unbekannter Fehler.";
+}
+
 function auditChangeSummary(item: AuditItem) {
   if (item.action === "INSERT") return "Neuen Eintrag erstellt";
   if (item.action === "DELETE") return "Eintrag gelöscht";
@@ -923,7 +937,7 @@ function FacilityManager({
                   {item.image ? <img className="partner-admin-logo" src={item.image} alt="" /> : <span className="content-manager-noimage">Kein Bild</span>}
                   <div>
                     <label>Titel<input required name={`title-${index}`} defaultValue={item.title} /></label>
-                    <label>Zahl <small>optional</small><input name={`number-${index}`} defaultValue={item.number} /></label>
+                    <label>Zahl <small>optional – erscheint nur mit Zahl zusätzlich als Kennzahl oben auf der Anlage-Seite</small><input name={`number-${index}`} defaultValue={item.number} /></label>
                     <label>Eyebrow <small>optional</small><input name={`eyebrow-${index}`} defaultValue={item.eyebrow} /></label>
                     <label>Text<textarea required name={`text-${index}`} rows={2} defaultValue={item.text} /></label>
                     <label>Button-Text <small>optional</small><input name={`action-${index}`} defaultValue={item.action} /></label>
@@ -2126,6 +2140,14 @@ function App() {
               "News, Termine, Medien, Mannschaften und Postfach erreichst du links.",
             ],
             [
+              "Vereinsinhalte pflegen",
+              "Vorstand, Chronik und Anlage-Bereiche sind eigene Editoren links im Menü — dort kannst du Mitglieder, Meilensteine und Bereichstexte direkt bearbeiten.",
+            ],
+            [
+              "Mitgliedsbeiträge",
+              "Unter Mitgliedsbeiträge änderst du Preise und legst neue Beitragsstufen an oder entfernst sie.",
+            ],
+            [
               "Sicher arbeiten",
               "Änderungen werden im Änderungslog protokolliert. Prüfe Inhalte vor der Veröffentlichung.",
             ],
@@ -2181,7 +2203,7 @@ function App() {
       .order("published_at", { ascending: false })
       .limit(200);
     if (error) {
-      setAdminNotice(`News konnten nicht geladen werden: ${error.message}`);
+      setAdminNotice(`News konnten nicht geladen werden: ${friendlyDbError(error)}`);
       return;
     }
     setAdminNews(data ?? []);
@@ -2192,7 +2214,7 @@ function App() {
       return;
     const { error } = await supabase.from("news").delete().eq("id", news.id);
     if (error) {
-      setAdminNotice(`News konnte nicht gelöscht werden: ${error.message}`);
+      setAdminNotice(`News konnte nicht gelöscht werden: ${friendlyDbError(error)}`);
       return;
     }
     setAdminNews((items) => items.filter((item) => item.id !== news.id));
@@ -2359,7 +2381,7 @@ function App() {
     }
     const { error } = await supabase.auth.updateUser({ password });
     if (error) {
-      setAdminNotice(`Passwort konnte nicht geändert werden: ${error.message}`);
+      setAdminNotice(`Passwort konnte nicht geändert werden: ${friendlyDbError(error)}`);
       return;
     }
     const { data, error: completionError } = await supabase.functions.invoke(
@@ -2513,7 +2535,7 @@ function App() {
     if (!supabase) return;
     const { error } = await supabase.auth.signOut();
     if (error) {
-      setAdminNotice(`Abmeldung fehlgeschlagen: ${error.message}`);
+      setAdminNotice(`Abmeldung fehlgeschlagen: ${friendlyDbError(error)}`);
       return;
     }
     setAccountOpen(false);
@@ -2529,7 +2551,7 @@ function App() {
     const { error } = await supabase.rpc("complete_platform_tutorial");
     if (error) {
       setAdminNotice(
-        `Tutorial konnte nicht abgeschlossen werden: ${error.message}`,
+        `Tutorial konnte nicht abgeschlossen werden: ${friendlyDbError(error)}`,
       );
       return;
     }
@@ -2548,7 +2570,7 @@ function App() {
       .eq("id", id);
     if (error) {
       setAdminNotice(
-        `Anfrage konnte nicht aktualisiert werden: ${error.message}`,
+        `Anfrage konnte nicht aktualisiert werden: ${friendlyDbError(error)}`,
       );
       return;
     }
@@ -2711,7 +2733,7 @@ function App() {
       const { data: sessionData, error: sessionError } =
         await supabase.auth.setSession(lookup.session);
       if (sessionError || !sessionData.user) {
-        setAdminNotice("Anmeldung fehlgeschlagen. Bitte Zugang prÃ¼fen.");
+        setAdminNotice("Anmeldung fehlgeschlagen. Bitte Zugang prüfen.");
         return;
       }
       await applyAuthenticatedUser(
@@ -2926,7 +2948,7 @@ function App() {
       ? await supabase.from("news").update(payload).eq("id", editingNews.id)
       : await supabase.from("news").insert(payload);
     if (error) {
-      setAdminNotice(`News konnte nicht gespeichert werden: ${error.message}`);
+      setAdminNotice(`News konnte nicht gespeichert werden: ${friendlyDbError(error)}`);
       return;
     }
     setAdminNotice(
@@ -2989,7 +3011,7 @@ function App() {
       : await supabase.from("events").insert(payload).select(eventSelect).single();
     if (error) {
       setAdminNotice(
-        `Termin konnte nicht gespeichert werden: ${error.message}`,
+        `Termin konnte nicht gespeichert werden: ${friendlyDbError(error)}`,
       );
       return;
     }
@@ -3021,7 +3043,7 @@ function App() {
     if (!supabase || !window.confirm("Termin wirklich löschen?")) return;
     const { error } = await supabase.from("events").delete().eq("id", id);
     if (error) {
-      setAdminNotice(`Termin konnte nicht gelöscht werden: ${error.message}`);
+      setAdminNotice(`Termin konnte nicht gelöscht werden: ${friendlyDbError(error)}`);
       return;
     }
     setAdminNotice("Termin wurde gelöscht.");
@@ -3038,7 +3060,7 @@ function App() {
       updated_by: adminUserId,
     });
     if (error) {
-      setAdminNotice(`Fokus konnte nicht gespeichert werden: ${error.message}`);
+      setAdminNotice(`Fokus konnte nicht gespeichert werden: ${friendlyDbError(error)}`);
       return;
     }
     setFeaturedContent(item);
@@ -3060,7 +3082,7 @@ function App() {
       updated_by: adminUserId,
     });
     if (error) {
-      setAdminNotice(`Fokus konnte nicht entfernt werden: ${error.message}`);
+      setAdminNotice(`Fokus konnte nicht entfernt werden: ${friendlyDbError(error)}`);
       return;
     }
     setFeaturedContent(defaultFeaturedContent);
@@ -3137,7 +3159,7 @@ function App() {
       .upsert({ key: "membership", value: { items }, updated_by: adminUserId });
     if (error) {
       setAdminNotice(
-        `Beiträge konnten nicht gespeichert werden: ${error.message}`,
+        `Beiträge konnten nicht gespeichert werden: ${friendlyDbError(error)}`,
       );
       return;
     }
@@ -3159,7 +3181,7 @@ function App() {
     };
     const items = [...liveMembership, item];
     const { error } = await supabase.from("club_content").upsert({ key: "membership", value: { items }, updated_by: adminUserId });
-    if (error) { setAdminNotice(`Beitragsstufe konnte nicht angelegt werden: ${error.message}`); return; }
+    if (error) { setAdminNotice(`Beitragsstufe konnte nicht angelegt werden: ${friendlyDbError(error)}`); return; }
     setLiveMembership(items); event.currentTarget.reset(); setAdminNotice(`„${name}“ wurde hinzugefügt.`);
   };
 
@@ -3167,7 +3189,7 @@ function App() {
     if (!supabase || !adminUserId || !window.confirm(`„${item.name}“ wirklich löschen?`)) return;
     const items = liveMembership.filter((price) => price !== item);
     const { error } = await supabase.from("club_content").upsert({ key: "membership", value: { items }, updated_by: adminUserId });
-    if (error) { setAdminNotice(`Konnte nicht gelöscht werden: ${error.message}`); return; }
+    if (error) { setAdminNotice(`Konnte nicht gelöscht werden: ${friendlyDbError(error)}`); return; }
     setLiveMembership(items); setAdminNotice(`„${item.name}“ wurde gelöscht.`);
   };
 
@@ -3186,7 +3208,7 @@ function App() {
       .upsert({ key: "teams", value: { items }, updated_by: adminUserId });
     if (error) {
       setAdminNotice(
-        `Mannschaften konnten nicht gespeichert werden: ${error.message}`,
+        `Mannschaften konnten nicht gespeichert werden: ${friendlyDbError(error)}`,
       );
       return;
     }
@@ -3209,7 +3231,7 @@ function App() {
     };
     const items = [...liveTeams, item];
     const { error } = await supabase.from("club_content").upsert({ key: "teams", value: { items }, updated_by: adminUserId });
-    if (error) { setAdminNotice(`Mannschaft konnte nicht angelegt werden: ${error.message}`); return; }
+    if (error) { setAdminNotice(`Mannschaft konnte nicht angelegt werden: ${friendlyDbError(error)}`); return; }
     setLiveTeams(items); event.currentTarget.reset(); setAdminNotice(`„${name}“ wurde hinzugefügt.`);
   };
 
@@ -3217,7 +3239,7 @@ function App() {
     if (!supabase || !adminUserId || !window.confirm(`„${item.name}“ wirklich löschen?`)) return;
     const items = liveTeams.filter((team) => team !== item);
     const { error } = await supabase.from("club_content").upsert({ key: "teams", value: { items }, updated_by: adminUserId });
-    if (error) { setAdminNotice(`Konnte nicht gelöscht werden: ${error.message}`); return; }
+    if (error) { setAdminNotice(`Konnte nicht gelöscht werden: ${friendlyDbError(error)}`); return; }
     setLiveTeams(items); setAdminNotice(`„${item.name}“ wurde gelöscht.`);
   };
 
@@ -3238,7 +3260,7 @@ function App() {
     });
     if (error) {
       setAdminNotice(
-        `Einstellungen konnten nicht gespeichert werden: ${error.message}`,
+        `Einstellungen konnten nicht gespeichert werden: ${friendlyDbError(error)}`,
       );
       return;
     }
@@ -3256,7 +3278,7 @@ function App() {
       .from("club-media")
       .upload(path, file, { upsert: false });
     if (error) {
-      setAdminNotice(`Upload fehlgeschlagen: ${error.message}`);
+      setAdminNotice(`Upload fehlgeschlagen: ${friendlyDbError(error)}`);
       return;
     }
     const { data } = supabase.storage.from("club-media").getPublicUrl(path);
@@ -3318,7 +3340,7 @@ function App() {
       .upsert({ key: "downloads", value: { items }, updated_by: adminUserId });
     if (error) {
       setAdminNotice(
-        `PDF wurde hochgeladen, aber nicht verknüpft: ${error.message}`,
+        `PDF wurde hochgeladen, aber nicht verknüpft: ${friendlyDbError(error)}`,
       );
       return;
     }
@@ -3341,7 +3363,7 @@ function App() {
       .from("club_content")
       .upsert({ key: "downloads", value: { items }, updated_by: adminUserId });
     if (error) {
-      setAdminNotice(`PDF konnte nicht entfernt werden: ${error.message}`);
+      setAdminNotice(`PDF konnte nicht entfernt werden: ${friendlyDbError(error)}`);
       return;
     }
     const match = item.file.match(
@@ -3368,7 +3390,7 @@ function App() {
     const item: PartnerItem = { id: crypto.randomUUID(), name: String(form.get("name")).trim(), website: String(form.get("website")).trim(), logo: publicUrl.publicUrl, note: String(form.get("note") ?? "").trim() };
     const items = [...livePartners, item];
     const { error } = await supabase.from("club_content").upsert({ key: "partners", value: { items }, updated_by: adminUserId });
-    if (error) { setAdminNotice(`Partner konnte nicht gespeichert werden: ${error.message}`); return; }
+    if (error) { setAdminNotice(`Partner konnte nicht gespeichert werden: ${friendlyDbError(error)}`); return; }
     setLivePartners(items); event.currentTarget.reset(); setAdminNotice(`${item.name} ist jetzt als Partner sichtbar.`);
   };
 
@@ -3376,7 +3398,7 @@ function App() {
     if (!supabase || !adminUserId || !window.confirm(`${item.name} wirklich als Partner entfernen?`)) return;
     const items = livePartners.filter((partner) => partner.id !== item.id);
     const { error } = await supabase.from("club_content").upsert({ key: "partners", value: { items }, updated_by: adminUserId });
-    if (error) { setAdminNotice(`Partner konnte nicht entfernt werden: ${error.message}`); return; }
+    if (error) { setAdminNotice(`Partner konnte nicht entfernt werden: ${friendlyDbError(error)}`); return; }
     const match = item.logo.match(/\/storage\/v1\/object\/public\/club-media\/(.+)$/);
     if (match) await supabase.storage.from("club-media").remove([match[1]]);
     setLivePartners(items); setAdminNotice(`${item.name} wurde entfernt.`);
@@ -3405,7 +3427,7 @@ function App() {
       role: String(form.get(`role-${index}`) ?? member.role).trim(),
     }));
     const { error } = await supabase.from("club_content").upsert({ key: "board", value: { items }, updated_by: adminUserId });
-    if (error) { setAdminNotice(`Vorstand konnte nicht gespeichert werden: ${error.message}`); return; }
+    if (error) { setAdminNotice(`Vorstand konnte nicht gespeichert werden: ${friendlyDbError(error)}`); return; }
     setLiveBoard(items); setAdminNotice("Vorstand aktualisiert.");
   };
 
@@ -3419,7 +3441,7 @@ function App() {
     const item: BoardMember = { id: crypto.randomUUID(), name, role, photo: "" };
     const items = [...liveBoard, item];
     const { error } = await supabase.from("club_content").upsert({ key: "board", value: { items }, updated_by: adminUserId });
-    if (error) { setAdminNotice(`Vorstandsmitglied konnte nicht angelegt werden: ${error.message}`); return; }
+    if (error) { setAdminNotice(`Vorstandsmitglied konnte nicht angelegt werden: ${friendlyDbError(error)}`); return; }
     setLiveBoard(items); event.currentTarget.reset(); setAdminNotice(`${name} wurde zum Vorstand hinzugefügt.`);
   };
 
@@ -3430,7 +3452,7 @@ function App() {
     catch (error) { setAdminNotice(`Foto-Upload fehlgeschlagen: ${(error as Error).message}`); return; }
     const items = liveBoard.map((member) => (member.id === id ? { ...member, photo: url } : member));
     const { error } = await supabase.from("club_content").upsert({ key: "board", value: { items }, updated_by: adminUserId });
-    if (error) { setAdminNotice(`Foto konnte nicht gespeichert werden: ${error.message}`); return; }
+    if (error) { setAdminNotice(`Foto konnte nicht gespeichert werden: ${friendlyDbError(error)}`); return; }
     setLiveBoard(items);
   };
 
@@ -3438,7 +3460,7 @@ function App() {
     if (!supabase || !adminUserId || !window.confirm(`${item.name} wirklich aus dem Vorstand entfernen?`)) return;
     const items = liveBoard.filter((member) => member.id !== item.id);
     const { error } = await supabase.from("club_content").upsert({ key: "board", value: { items }, updated_by: adminUserId });
-    if (error) { setAdminNotice(`Konnte nicht entfernt werden: ${error.message}`); return; }
+    if (error) { setAdminNotice(`Konnte nicht entfernt werden: ${friendlyDbError(error)}`); return; }
     if (item.photo) await removeClubMediaFile(item.photo);
     setLiveBoard(items); setAdminNotice(`${item.name} wurde entfernt.`);
   };
@@ -3456,7 +3478,7 @@ function App() {
       text: String(form.get(`text-${index}`) ?? entry.text).trim(),
     }));
     const { error } = await supabase.from("club_content").upsert({ key: "history", value: { items }, updated_by: adminUserId });
-    if (error) { setAdminNotice(`Chronik konnte nicht gespeichert werden: ${error.message}`); return; }
+    if (error) { setAdminNotice(`Chronik konnte nicht gespeichert werden: ${friendlyDbError(error)}`); return; }
     setLiveHistory(items); setAdminNotice("Chronik aktualisiert.");
   };
 
@@ -3470,7 +3492,7 @@ function App() {
     const item: HistoryEvent = { id: crypto.randomUUID(), year, title, label: "", text: "", image: "" };
     const items = [...liveHistory, item].sort((a, b) => a.year.localeCompare(b.year));
     const { error } = await supabase.from("club_content").upsert({ key: "history", value: { items }, updated_by: adminUserId });
-    if (error) { setAdminNotice(`Eintrag konnte nicht angelegt werden: ${error.message}`); return; }
+    if (error) { setAdminNotice(`Eintrag konnte nicht angelegt werden: ${friendlyDbError(error)}`); return; }
     setLiveHistory(items); event.currentTarget.reset(); setAdminNotice(`${year} wurde zur Chronik hinzugefügt.`);
   };
 
@@ -3481,7 +3503,7 @@ function App() {
     catch (error) { setAdminNotice(`Bild-Upload fehlgeschlagen: ${(error as Error).message}`); return; }
     const items = liveHistory.map((entry) => (entry.id === id ? { ...entry, image: url } : entry));
     const { error } = await supabase.from("club_content").upsert({ key: "history", value: { items }, updated_by: adminUserId });
-    if (error) { setAdminNotice(`Bild konnte nicht gespeichert werden: ${error.message}`); return; }
+    if (error) { setAdminNotice(`Bild konnte nicht gespeichert werden: ${friendlyDbError(error)}`); return; }
     setLiveHistory(items);
   };
 
@@ -3489,7 +3511,7 @@ function App() {
     if (!supabase || !adminUserId || !window.confirm(`„${item.year} · ${item.title}“ wirklich löschen?`)) return;
     const items = liveHistory.filter((entry) => entry.id !== item.id);
     const { error } = await supabase.from("club_content").upsert({ key: "history", value: { items }, updated_by: adminUserId });
-    if (error) { setAdminNotice(`Konnte nicht gelöscht werden: ${error.message}`); return; }
+    if (error) { setAdminNotice(`Konnte nicht gelöscht werden: ${friendlyDbError(error)}`); return; }
     if (item.image) await removeClubMediaFile(item.image);
     setLiveHistory(items); setAdminNotice(`Eintrag „${item.title}“ wurde gelöscht.`);
   };
@@ -3509,7 +3531,7 @@ function App() {
       href: String(form.get(`href-${index}`) ?? facility.href).trim(),
     }));
     const { error } = await supabase.from("club_content").upsert({ key: "facilities", value: { items }, updated_by: adminUserId });
-    if (error) { setAdminNotice(`Anlage-Bereiche konnten nicht gespeichert werden: ${error.message}`); return; }
+    if (error) { setAdminNotice(`Anlage-Bereiche konnten nicht gespeichert werden: ${friendlyDbError(error)}`); return; }
     setLiveFacilities(items); setAdminNotice("Anlage-Bereiche aktualisiert.");
   };
 
@@ -3531,7 +3553,7 @@ function App() {
     };
     const items = [...liveFacilities, item];
     const { error } = await supabase.from("club_content").upsert({ key: "facilities", value: { items }, updated_by: adminUserId });
-    if (error) { setAdminNotice(`Bereich konnte nicht angelegt werden: ${error.message}`); return; }
+    if (error) { setAdminNotice(`Bereich konnte nicht angelegt werden: ${friendlyDbError(error)}`); return; }
     setLiveFacilities(items); event.currentTarget.reset(); setAdminNotice(`„${title}“ wurde hinzugefügt.`);
   };
 
@@ -3542,7 +3564,7 @@ function App() {
     catch (error) { setAdminNotice(`Bild-Upload fehlgeschlagen: ${(error as Error).message}`); return; }
     const items = liveFacilities.map((facility) => (facility.id === id ? { ...facility, image: url } : facility));
     const { error } = await supabase.from("club_content").upsert({ key: "facilities", value: { items }, updated_by: adminUserId });
-    if (error) { setAdminNotice(`Bild konnte nicht gespeichert werden: ${error.message}`); return; }
+    if (error) { setAdminNotice(`Bild konnte nicht gespeichert werden: ${friendlyDbError(error)}`); return; }
     setLiveFacilities(items);
   };
 
@@ -3550,7 +3572,7 @@ function App() {
     if (!supabase || !adminUserId || !window.confirm(`„${item.title}“ wirklich löschen?`)) return;
     const items = liveFacilities.filter((facility) => facility.id !== item.id);
     const { error } = await supabase.from("club_content").upsert({ key: "facilities", value: { items }, updated_by: adminUserId });
-    if (error) { setAdminNotice(`Konnte nicht gelöscht werden: ${error.message}`); return; }
+    if (error) { setAdminNotice(`Konnte nicht gelöscht werden: ${friendlyDbError(error)}`); return; }
     if (item.image) await removeClubMediaFile(item.image);
     setLiveFacilities(items); setAdminNotice(`„${item.title}“ wurde gelöscht.`);
   };
@@ -3577,7 +3599,7 @@ function App() {
     });
     if (error) {
       setAdminNotice(
-        `Bild wurde hochgeladen, aber nicht gespeichert: ${error.message}`,
+        `Bild wurde hochgeladen, aber nicht gespeichert: ${friendlyDbError(error)}`,
       );
       return;
     }
@@ -3602,7 +3624,7 @@ function App() {
     });
     if (error) {
       setAdminNotice(
-        `Bild konnte nicht zurückgesetzt werden: ${error.message}`,
+        `Bild konnte nicht zurückgesetzt werden: ${friendlyDbError(error)}`,
       );
       return;
     }
@@ -3629,7 +3651,7 @@ function App() {
       .upload(path, file, { upsert: false });
     if (error) {
       setAdminNotice(
-        `Mannschaftsfoto konnte nicht hochgeladen werden: ${error.message}`,
+        `Mannschaftsfoto konnte nicht hochgeladen werden: ${friendlyDbError(error)}`,
       );
       return;
     }
@@ -3659,7 +3681,7 @@ function App() {
       .from("club-media")
       .remove([`news/${name}`]);
     if (error) {
-      setAdminNotice(`Bild konnte nicht gelöscht werden: ${error.message}`);
+      setAdminNotice(`Bild konnte nicht gelöscht werden: ${friendlyDbError(error)}`);
       return;
     }
     setAdminNotice("Bild wurde gelöscht.");
@@ -3674,7 +3696,7 @@ function App() {
     });
     if (error) {
       setAdminNotice(
-        `Änderung konnte nicht zurückgesetzt werden: ${error.message}`,
+        `Änderung konnte nicht zurückgesetzt werden: ${friendlyDbError(error)}`,
       );
       return;
     }
