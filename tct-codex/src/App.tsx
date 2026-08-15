@@ -5500,6 +5500,19 @@ function App() {
             <p className="eyebrow">
               <span /> Navigation
             </p>
+            {adminUserId && editorialRoles.includes(adminRole) && (
+              <button
+                className={`menu-edit-mode${editMode ? " active" : ""}`}
+                onClick={() => {
+                  setEditMode((value) => !value);
+                  setMenuOpen(false);
+                }}
+                aria-pressed={editMode}
+              >
+                <Pencil size={16} />
+                {editMode ? "Bearbeiten beenden" : "Texte bearbeiten"} <ArrowRight size={16} />
+              </button>
+            )}
             <div className="mobile-menu-account">
               <button
                 className="menu-admin"
