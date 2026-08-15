@@ -200,6 +200,7 @@ type PublicEvent = {
   venue_address: string | null;
 };
 type MediaFile = { name: string; created_at: string | null };
+type MediaEntry = { folder: string; name: string; path: string; url: string; inUse: boolean };
 type AdminEditor =
   | "news"
   | "event"
@@ -214,6 +215,7 @@ type AdminEditor =
   | "facilities"
   | "blocks"
   | "navigation"
+  | "mediaLibrary"
   | "focus"
   | "assistant"
   | "booking"
@@ -1076,6 +1078,64 @@ function NavigationManager({
   </div>;
 }
 
+function MediaLibraryManager({
+  open, close, files, loading, onOpen, refresh, remove, upload,
+}: {
+  open: boolean; close: () => void; files: MediaEntry[]; loading: boolean;
+  onOpen: () => void;
+  refresh: () => void;
+  remove: (entry: MediaEntry) => void;
+  upload: (file: File) => void;
+}) {
+  useEffect(() => {
+    if (open) onOpen();
+  }, [open]);
+  if (!open) return null;
+  const folderLabels: Record<string, string> = {
+    news: "News", downloads: "Downloads", partners: "Partner", board: "Vorstand",
+    history: "Chronik", facilities: "Anlage-Bereiche", blocks: "Zusatzblöcke",
+    "site-images": "Website-Bilder", teams: "Mannschaften", library: "Mediathek (frei)",
+  };
+  return <div className="editor-overlay content-manager" role="dialog" aria-modal="true" aria-label="Mediathek">
+    <button className="admin-close" onClick={close} aria-label="Mediathek schließen"><X size={23} /></button>
+    <div className="content-manager-card">
+      <header><div><p className="eyebrow"><span /> Mediathek</p><h2>Alle<br /><em>Bilder.</em></h2><p>Alle hochgeladenen Bilder der Website an einem Ort. Bilder, die noch verwendet werden, sind markiert — beim Löschen wird gewarnt.</p></div></header>
+      <form
+        className="admin-add-form"
+        onSubmit={(event) => {
+          event.preventDefault();
+          const input = event.currentTarget.querySelector("input[type=file]") as HTMLInputElement;
+          const file = input.files?.[0];
+          if (file) upload(file);
+          event.currentTarget.reset();
+        }}
+      >
+        <p className="kicker">NEUES BILD HOCHLADEN</p>
+        <label>Datei<input required type="file" accept="image/png,image/jpeg,image/webp" /></label>
+        <button className="button button-light" type="submit">Hochladen <ImagePlus size={17} /></button>
+      </form>
+      <div className="media-library-head">
+        <p className="kicker">{loading ? "LÄDT …" : `${files.length} DATEIEN`}</p>
+        <button onClick={refresh}>Aktualisieren</button>
+      </div>
+      <div className="media-library-grid">
+        {files.length ? (
+          files.map((entry) => (
+            <article key={entry.path} className={entry.inUse ? "in-use" : ""}>
+              <img src={entry.url} alt="" loading="lazy" />
+              <span>{folderLabels[entry.folder] ?? entry.folder} · {entry.name}</span>
+              {entry.inUse && <small className="media-in-use-badge">Wird verwendet</small>}
+              <button onClick={() => remove(entry)}>Löschen</button>
+            </article>
+          ))
+        ) : !loading ? (
+          <p className="content-manager-empty">Noch keine Bilder hochgeladen.</p>
+        ) : null}
+      </div>
+    </div>
+  </div>;
+}
+
 function SiteImageManager({
   open,
   close,
@@ -1719,6 +1779,8 @@ function App() {
   const [livePartners, setLivePartners] = useState<PartnerItem[]>([]);
   const [liveCustomBlocks, setLiveCustomBlocks] = useState<CustomBlock[]>([]);
   const [liveNavItems, setLiveNavItems] = useState<NavItem[]>(defaultNavItems);
+  const [mediaLibraryFiles, setMediaLibraryFiles] = useState<MediaEntry[]>([]);
+  const [mediaLibraryLoading, setMediaLibraryLoading] = useState(false);
   const [liveCopy, setLiveCopy] = useState<Record<string, string>>({});
   const [editMode, setEditMode] = useState(false);
   const [liveBoard, setLiveBoard] = useState<BoardMember[]>(
@@ -4005,6 +4067,60 @@ function App() {
     event.currentTarget.value = "";
   };
 
+  const mediaLibraryFolders = ["library", "news", "downloads", "partners", "board", "history", "facilities", "blocks", "site-images", "teams"];
+
+  const loadMediaLibrary = async () => {
+    if (!supabase) return;
+    setMediaLibraryLoading(true);
+    const usedUrls = new Set<string>([
+      ...liveBoard.map((item) => item.photo),
+      ...liveHistory.map((item) => item.image),
+      ...liveFacilities.map((item) => item.image),
+      ...liveCustomBlocks.map((item) => item.image),
+      ...livePartners.map((item) => item.logo),
+      ...liveDownloads.map((item) => item.file),
+      ...liveTeamGallery.map((item) => item.image),
+      ...allPublishedNews.map((item) => item.image_path ?? ""),
+      ...Object.values(liveSiteImages),
+    ].filter(Boolean));
+    const entries: MediaEntry[] = [];
+    for (const folder of mediaLibraryFolders) {
+      const { data } = await supabase.storage.from("club-media").list(folder, { limit: 200, sortBy: { column: "created_at", order: "desc" } });
+      for (const file of data ?? []) {
+        if (file.name === ".emptyFolderPlaceholder") continue;
+        const path = `${folder}/${file.name}`;
+        const { data: urlData } = supabase.storage.from("club-media").getPublicUrl(path);
+        entries.push({ folder, name: file.name, path, url: urlData.publicUrl, inUse: usedUrls.has(urlData.publicUrl) });
+      }
+    }
+    setMediaLibraryFiles(entries);
+    setMediaLibraryLoading(false);
+  };
+
+  const deleteMediaLibraryFile = async (entry: MediaEntry) => {
+    if (!supabase) return;
+    const warning = entry.inUse
+      ? `„${entry.name}“ wird aktuell auf der Website verwendet. Wirklich löschen? Die Stelle, die dieses Bild nutzt, zeigt danach kein Bild mehr.`
+      : `„${entry.name}“ wirklich endgültig löschen?`;
+    if (!window.confirm(warning)) return;
+    const { error } = await supabase.storage.from("club-media").remove([entry.path]);
+    if (error) { setAdminNotice(`Datei konnte nicht gelöscht werden: ${friendlyDbError(error)}`); return; }
+    setMediaLibraryFiles((files) => files.filter((file) => file.path !== entry.path));
+    setAdminNotice(`„${entry.name}“ wurde gelöscht.`);
+  };
+
+  const uploadToMediaLibrary = async (file: File) => {
+    if (!supabase) return;
+    try {
+      await uploadClubMediaFile("library", file);
+    } catch (error) {
+      setAdminNotice(`Upload fehlgeschlagen: ${(error as Error).message}`);
+      return;
+    }
+    setAdminNotice(`„${file.name}“ wurde in die Mediathek hochgeladen.`);
+    await loadMediaLibrary();
+  };
+
   const deleteMedia = async (name: string) => {
     if (!supabase || !window.confirm(`Bild ${name} wirklich löschen?`)) return;
     const { error } = await supabase.storage
@@ -4158,6 +4274,16 @@ function App() {
         toggleField={toggleNavField}
         addOne={(event) => void addNavItem(event)}
         remove={(item) => void deleteNavItem(item)}
+      />
+      <MediaLibraryManager
+        open={adminEditor === "mediaLibrary" && canManageGeneralContent}
+        close={() => setAdminEditor(null)}
+        files={mediaLibraryFiles}
+        loading={mediaLibraryLoading}
+        onOpen={() => void loadMediaLibrary()}
+        refresh={() => void loadMediaLibrary()}
+        remove={(entry) => void deleteMediaLibraryFile(entry)}
+        upload={(file) => void uploadToMediaLibrary(file)}
       />
       <SiteImageManager
         open={adminEditor === "media"}
@@ -6185,6 +6311,11 @@ function App() {
                 <Menu size={18} /> Navigation
               </a>
             )}
+            {canManageGeneralContent && (
+              <a onClick={() => setAdminEditor("mediaLibrary")}>
+                <ImagePlus size={18} /> Mediathek
+              </a>
+            )}
             {canManageInbox && (
               <a onClick={() => setAdminEditor("inbox")}>
                 <Mail size={18} /> Postfach
@@ -6376,6 +6507,13 @@ function App() {
                 <button className="admin-task" onClick={() => setAdminEditor("navigation")}>
                   <Menu size={19} />
                   <span><b>Navigation verwalten</b><small>Menüpunkte anordnen, umbenennen, verstecken</small></span>
+                  <ArrowRight size={18} />
+                </button>
+              )}
+              {canManageGeneralContent && (
+                <button className="admin-task" onClick={() => setAdminEditor("mediaLibrary")}>
+                  <ImagePlus size={19} />
+                  <span><b>Mediathek</b><small>Alle Bilder an einem Ort ansehen, hochladen, löschen</small></span>
                   <ArrowRight size={18} />
                 </button>
               )}
