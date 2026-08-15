@@ -56,27 +56,20 @@ const PartnerBoard = lazy(() =>
   import("./PartnerBoard").then((m) => ({ default: m.PartnerBoard })),
 );
 
-const navLinks = [
-  ["Club", "/club"],
-  ["Anlage", "/anlage"],
-  ["Buchen", "/booking"],
-  ["Spielpartner", "/spielpartner"],
-  ["Teams", "/teams"],
-  ["Turniere", "/turniere"],
-];
-const mobileNavGroups = [
-  {
-    label: "Entdecken",
-    links: [["Startseite", "/"], ["Der Club", "/club"], ["Anlage & Restaurant", "/anlage"], ["Teams", "/teams"], ["Turniere", "/turniere"], ["News", "/news"]],
-  },
-  {
-    label: "Mitmachen",
-    links: [["Spielpartner finden", "/spielpartner"], ["Mitglied werden", "/mitglied-werden"], ["Tennisschule", "/anlage#tennisschule"]],
-  },
-  {
-    label: "Service",
-    links: [["Termine", "/turniere"], ["Galerie", "/galerie"], ["Downloads", "/service"], ["Kontakt", "/kontakt"], ["Partner & Sponsoren", "/partner"]],
-  },
+type NavItem = { id: string; label: string; href: string; visible: boolean; primary: boolean };
+const defaultNavItems: NavItem[] = [
+  { id: "club", label: "Club", href: "/club", visible: true, primary: true },
+  { id: "anlage", label: "Anlage", href: "/anlage", visible: true, primary: true },
+  { id: "booking", label: "Buchen", href: "/booking", visible: true, primary: true },
+  { id: "spielpartner", label: "Spielpartner", href: "/spielpartner", visible: true, primary: true },
+  { id: "teams", label: "Teams", href: "/teams", visible: true, primary: true },
+  { id: "turniere", label: "Turniere", href: "/turniere", visible: true, primary: true },
+  { id: "news", label: "News", href: "/news", visible: true, primary: false },
+  { id: "mitglied-werden", label: "Mitglied werden", href: "/mitglied-werden", visible: true, primary: false },
+  { id: "service", label: "Downloads", href: "/service", visible: true, primary: false },
+  { id: "galerie", label: "Galerie", href: "/galerie", visible: true, primary: false },
+  { id: "partner", label: "Partner", href: "/partner", visible: true, primary: false },
+  { id: "kontakt", label: "Kontakt", href: "/kontakt", visible: true, primary: false },
 ];
 
 type PriceItem = { name: string; price: string; monthly: string };
@@ -220,6 +213,7 @@ type AdminEditor =
   | "history"
   | "facilities"
   | "blocks"
+  | "navigation"
   | "focus"
   | "assistant"
   | "booking"
@@ -1010,6 +1004,78 @@ function CustomBlockManager({
   </div>;
 }
 
+function NavigationManager({
+  open, close, items, reorder, updateField, commit, toggleField, addOne, remove,
+}: {
+  open: boolean; close: () => void; items: NavItem[];
+  reorder: (fromIndex: number, toIndex: number) => void;
+  updateField: (id: string, field: "label" | "href", value: string) => void;
+  commit: () => void;
+  toggleField: (id: string, field: "visible" | "primary") => void;
+  addOne: (event: FormEvent<HTMLFormElement>) => void;
+  remove: (item: NavItem) => void;
+}) {
+  const [dragIndex, setDragIndex] = useState<number | null>(null);
+  if (!open) return null;
+  return <div className="editor-overlay content-manager" role="dialog" aria-modal="true" aria-label="Navigation verwalten">
+    <button className="admin-close" onClick={close} aria-label="Navigationsverwaltung schließen"><X size={23} /></button>
+    <div className="content-manager-card">
+      <header><div><p className="eyebrow"><span /> Navigation</p><h2>Menü.<br /><em>Anordnen.</em></h2><p>Ziehe Einträge per Drag &amp; Drop in eine neue Reihenfolge. „Hauptmenü“ zeigt einen Punkt direkt in der Kopfzeile statt im „Mehr“-Menü. Mindestens ein Eintrag muss sichtbar bleiben.</p></div></header>
+      <div className="content-manager-grid">
+        <form onSubmit={addOne}>
+          <p className="kicker">NEUER MENÜPUNKT</p>
+          <label>Text<input required name="newLabel" placeholder="z. B. Sponsoren" /></label>
+          <label>Link<input required name="newHref" placeholder="z. B. /partner" /></label>
+          <button className="button button-light" type="submit">Hinzufügen <ArrowRight size={17} /></button>
+        </form>
+        <section className="content-manager-list">
+          <div><p className="kicker">MENÜPUNKTE</p></div>
+          <div className="nav-manager-rows">
+            {items.map((item, index) => (
+              <article
+                key={item.id}
+                className={`nav-manager-row${dragIndex === index ? " dragging" : ""}${!item.visible ? " is-hidden" : ""}`}
+                draggable
+                onDragStart={() => setDragIndex(index)}
+                onDragOver={(event) => event.preventDefault()}
+                onDrop={(event) => {
+                  event.preventDefault();
+                  if (dragIndex !== null) reorder(dragIndex, index);
+                  setDragIndex(null);
+                }}
+                onDragEnd={() => setDragIndex(null)}
+              >
+                <span className="nav-drag-handle" aria-hidden="true">⠿</span>
+                <input
+                  value={item.label}
+                  onChange={(event) => updateField(item.id, "label", event.target.value)}
+                  onBlur={commit}
+                  aria-label="Menütext"
+                />
+                <input
+                  value={item.href}
+                  onChange={(event) => updateField(item.id, "href", event.target.value)}
+                  onBlur={commit}
+                  aria-label="Link"
+                />
+                <label className="nav-toggle">
+                  <input type="checkbox" checked={item.primary} onChange={() => toggleField(item.id, "primary")} />
+                  Hauptmenü
+                </label>
+                <label className="nav-toggle">
+                  <input type="checkbox" checked={item.visible} onChange={() => toggleField(item.id, "visible")} />
+                  Sichtbar
+                </label>
+                <button className="danger" type="button" onClick={() => remove(item)}>Löschen</button>
+              </article>
+            ))}
+          </div>
+        </section>
+      </div>
+    </div>
+  </div>;
+}
+
 function SiteImageManager({
   open,
   close,
@@ -1652,6 +1718,7 @@ function App() {
   );
   const [livePartners, setLivePartners] = useState<PartnerItem[]>([]);
   const [liveCustomBlocks, setLiveCustomBlocks] = useState<CustomBlock[]>([]);
+  const [liveNavItems, setLiveNavItems] = useState<NavItem[]>(defaultNavItems);
   const [liveCopy, setLiveCopy] = useState<Record<string, string>>({});
   const [editMode, setEditMode] = useState(false);
   const [liveBoard, setLiveBoard] = useState<BoardMember[]>(
@@ -1915,6 +1982,16 @@ function App() {
       if (Array.isArray(data?.value?.items)) setLiveCustomBlocks(data.value.items as CustomBlock[]);
     };
     void loadCustomBlocks();
+  }, []);
+
+  useEffect(() => {
+    const client = supabase;
+    if (!client) return;
+    const loadNavigation = async () => {
+      const { data } = await client.from("club_content").select("value").eq("key", "navigation").maybeSingle();
+      if (Array.isArray(data?.value?.items) && data.value.items.length) setLiveNavItems(data.value.items as NavItem[]);
+    };
+    void loadNavigation();
   }, []);
 
   useEffect(() => {
@@ -3728,6 +3805,56 @@ function App() {
     setLiveFacilities(items); setAdminNotice(`„${item.title}“ wurde gelöscht.`);
   };
 
+  const saveNavItems = async (items: NavItem[]) => {
+    if (!supabase || !adminUserId) return;
+    const { error } = await supabase.from("club_content").upsert({ key: "navigation", value: { items }, updated_by: adminUserId });
+    if (error) { setAdminNotice(`Navigation konnte nicht gespeichert werden: ${friendlyDbError(error)}`); return; }
+    setLiveNavItems(items);
+    setAdminNotice("Navigation aktualisiert.");
+  };
+
+  const reorderNavItems = (fromIndex: number, toIndex: number) => {
+    if (fromIndex === toIndex) return;
+    const items = [...liveNavItems];
+    const [moved] = items.splice(fromIndex, 1);
+    items.splice(toIndex, 0, moved);
+    void saveNavItems(items);
+  };
+
+  const updateNavField = (id: string, field: "label" | "href", value: string) => {
+    setLiveNavItems((items) => items.map((item) => (item.id === id ? { ...item, [field]: value } : item)));
+  };
+
+  const toggleNavField = (id: string, field: "visible" | "primary") => {
+    const items = liveNavItems.map((item) => (item.id === id ? { ...item, [field]: !item[field] } : item));
+    if (field === "visible" && !items.some((item) => item.visible)) {
+      setAdminNotice("Mindestens ein Navigationspunkt muss sichtbar bleiben.");
+      return;
+    }
+    void saveNavItems(items);
+  };
+
+  const addNavItem = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    const form = new FormData(event.currentTarget);
+    const label = String(form.get("newLabel") ?? "").trim();
+    const href = String(form.get("newHref") ?? "").trim();
+    if (!label || !href) return;
+    const item: NavItem = { id: crypto.randomUUID(), label, href, visible: true, primary: false };
+    await saveNavItems([...liveNavItems, item]);
+    event.currentTarget.reset();
+  };
+
+  const deleteNavItem = async (item: NavItem) => {
+    if (!window.confirm(`„${item.label}“ wirklich aus der Navigation entfernen?`)) return;
+    const items = liveNavItems.filter((entry) => entry.id !== item.id);
+    if (!items.some((entry) => entry.visible)) {
+      setAdminNotice("Mindestens ein Navigationspunkt muss übrig bleiben.");
+      return;
+    }
+    await saveNavItems(items);
+  };
+
   const saveCustomBlocks = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     if (!supabase || !adminUserId) return;
@@ -4021,6 +4148,17 @@ function App() {
         remove={(item) => void deleteCustomBlock(item)}
         uploadImage={(id, file) => void uploadCustomBlockImage(id, file)}
       />
+      <NavigationManager
+        open={adminEditor === "navigation" && canManageGeneralContent}
+        close={() => setAdminEditor(null)}
+        items={liveNavItems}
+        reorder={reorderNavItems}
+        updateField={updateNavField}
+        commit={() => void saveNavItems(liveNavItems)}
+        toggleField={toggleNavField}
+        addOne={(event) => void addNavItem(event)}
+        remove={(item) => void deleteNavItem(item)}
+      />
       <SiteImageManager
         open={adminEditor === "media"}
         close={() => setAdminEditor(null)}
@@ -4068,17 +4206,21 @@ function App() {
           <img src={liveSiteImages.logo} alt="TCT 1888" />
         </a>
         <nav className="desktop-nav" aria-label="Hauptnavigation">
-          {navLinks.map(([label, href]) => (
-            <a key={href} href={isFocusedPage && href.startsWith("#") ? `/${href}` : href}>
-              {label}
+          {liveNavItems.filter((item) => item.visible && item.primary).map((item) => (
+            <a key={item.id} href={isFocusedPage && item.href.startsWith("#") ? `/${item.href}` : item.href}>
+              {item.label}
             </a>
           ))}
-          <details className="desktop-nav-more">
-            <summary>Mehr</summary>
-            <div>
-              <a href="/news">News</a><a href="/mitglied-werden">Mitglied werden</a><a href="/service">Downloads</a><a href="/galerie">Galerie</a><a href="/partner">Partner</a><a href="/kontakt">Kontakt</a>
-            </div>
-          </details>
+          {liveNavItems.some((item) => item.visible && !item.primary) && (
+            <details className="desktop-nav-more">
+              <summary>Mehr</summary>
+              <div>
+                {liveNavItems.filter((item) => item.visible && !item.primary).map((item) => (
+                  <a key={item.id} href={item.href}>{item.label}</a>
+                ))}
+              </div>
+            </details>
+          )}
         </nav>
         <a className="mobile-header-title" href="/" aria-label="Tennisclub Trier Startseite">
           <span>Tennisclub <em>Trier.</em></span>
@@ -4092,16 +4234,6 @@ function App() {
           >
             <Search size={19} />
           </button>
-          {adminUserId && editorialRoles.includes(adminRole) && (
-            <button
-              className={`admin-trigger edit-mode-trigger${editMode ? " active" : ""}`}
-              onClick={() => setEditMode((value) => !value)}
-              aria-pressed={editMode}
-            >
-              <Pencil size={14} />
-              {editMode ? "Bearbeiten beenden" : "Texte bearbeiten"}
-            </button>
-          )}
           {adminUserId ? (
             <button
               className="admin-trigger"
@@ -4657,11 +4789,11 @@ function App() {
           </div>
         </section>
 
-        <section className="section school motion route-home route-anlage" id="tennisschule">
+        <section className="section school route-home route-anlage" id="tennisschule">
           <div className="school-image">
             <img src={liveSiteImages.school} alt="Kinder beim Tennistraining" />
           </div>
-          <div className="school-copy">
+          <div className="school-copy motion">
             <p className="eyebrow">
               <span /> <EditableText id="school.eyebrow" defaultValue="Tennisschule Point" />
             </p>
@@ -5635,19 +5767,6 @@ function App() {
             <p className="eyebrow">
               <span /> Navigation
             </p>
-            {adminUserId && editorialRoles.includes(adminRole) && (
-              <button
-                className={`menu-edit-mode${editMode ? " active" : ""}`}
-                onClick={() => {
-                  setEditMode((value) => !value);
-                  setMenuOpen(false);
-                }}
-                aria-pressed={editMode}
-              >
-                <Pencil size={16} />
-                {editMode ? "Bearbeiten beenden" : "Texte bearbeiten"} <ArrowRight size={16} />
-              </button>
-            )}
             <div className="mobile-menu-account">
               <button
                 className="menu-admin"
@@ -5681,18 +5800,16 @@ function App() {
               Platz buchen <ArrowRight size={18} />
             </a>
             <div className="mobile-menu-groups">
-              {mobileNavGroups.map((group) => (
-                <section className="mobile-menu-group" key={group.label}>
-                  <p>{group.label}</p>
-                  <div>
-                    {group.links.map(([label, href]) => (
-                      <a href={href} onClick={() => setMenuOpen(false)} key={`${group.label}-${href}`}>
-                        {label}<ArrowRight size={15} />
-                      </a>
-                    ))}
-                  </div>
-                </section>
-              ))}
+              <section className="mobile-menu-group">
+                <p>Menü</p>
+                <div>
+                  {liveNavItems.filter((item) => item.visible).map((item) => (
+                    <a href={item.href} onClick={() => setMenuOpen(false)} key={item.id}>
+                      {item.label}<ArrowRight size={15} />
+                    </a>
+                  ))}
+                </div>
+              </section>
             </div>
           </div>
         </div>
@@ -6063,6 +6180,11 @@ function App() {
                 <ImagePlus size={18} /> Zusatzblöcke
               </a>
             )}
+            {canManageGeneralContent && (
+              <a onClick={() => setAdminEditor("navigation")}>
+                <Menu size={18} /> Navigation
+              </a>
+            )}
             {canManageInbox && (
               <a onClick={() => setAdminEditor("inbox")}>
                 <Mail size={18} /> Postfach
@@ -6105,6 +6227,22 @@ function App() {
                 </span>
                 <ArrowRight size={18} />
               </button>
+              {editorialRoles.includes(adminRole) && (
+                <button
+                  className="admin-task"
+                  onClick={() => {
+                    setEditMode((value) => !value);
+                    setAdminPanel(null);
+                  }}
+                >
+                  <Pencil size={19} />
+                  <span>
+                    <b>{editMode ? "Textbearbeitung beenden" : "Startseite bearbeiten"}</b>
+                    <small>Jeden Text auf der Website direkt anklicken und ändern</small>
+                  </span>
+                  <ArrowRight size={18} />
+                </button>
+              )}
               {adminEmail === OWNER_EMAIL && (
                 <button className="admin-task" onClick={() => void resetSiteTheme()}>
                   <Settings2 size={19} />
@@ -6231,6 +6369,13 @@ function App() {
                 <button className="admin-task" onClick={() => setAdminEditor("blocks")}>
                   <ImagePlus size={19} />
                   <span><b>Zusatzblöcke verwalten</b><small>Eigene Absätze mit Bild hinzufügen</small></span>
+                  <ArrowRight size={18} />
+                </button>
+              )}
+              {canManageGeneralContent && (
+                <button className="admin-task" onClick={() => setAdminEditor("navigation")}>
+                  <Menu size={19} />
+                  <span><b>Navigation verwalten</b><small>Menüpunkte anordnen, umbenennen, verstecken</small></span>
                   <ArrowRight size={18} />
                 </button>
               )}
