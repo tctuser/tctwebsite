@@ -90,6 +90,7 @@ type PartnerItem = { id: string; name: string; website: string; logo: string; no
 type BoardMember = { id: string; name: string; role: string; photo: string };
 type HistoryEvent = { id: string; year: string; title: string; label: string; text: string; image: string };
 type FacilityItem = { id: string; number: string; title: string; eyebrow: string; text: string; action: string; href: string; image: string };
+type CustomBlock = { id: string; title: string; text: string; image: string };
 type ClubSettings = {
   openingHours: string;
   tennisBookingUrl: string;
@@ -218,6 +219,7 @@ type AdminEditor =
   | "board"
   | "history"
   | "facilities"
+  | "blocks"
   | "focus"
   | "assistant"
   | "booking"
@@ -963,6 +965,51 @@ function FacilityManager({
   </div>;
 }
 
+function CustomBlockManager({
+  open, close, items, saveAll, addOne, remove, uploadImage,
+}: {
+  open: boolean; close: () => void; items: CustomBlock[];
+  saveAll: (event: FormEvent<HTMLFormElement>) => void;
+  addOne: (event: FormEvent<HTMLFormElement>) => void;
+  remove: (item: CustomBlock) => void;
+  uploadImage: (id: string, file: File) => void;
+}) {
+  if (!open) return null;
+  return <div className="editor-overlay content-manager" role="dialog" aria-modal="true" aria-label="Zusatzblöcke verwalten">
+    <button className="admin-close" onClick={close} aria-label="Zusatzblöcke-Verwaltung schließen"><X size={23} /></button>
+    <div className="content-manager-card">
+      <header><div><p className="eyebrow"><span /> Zusatzblöcke</p><h2>Eigene<br /><em>Inhalte.</em></h2><p>Neue Absätze mit Titel, Text und optionalem Bild anlegen — erscheinen auf der Startseite unter „Direkt zum Ziel“.</p></div></header>
+      <div className="content-manager-grid">
+        <form onSubmit={addOne}>
+          <p className="kicker">NEUER BLOCK</p>
+          <label>Titel<input required name="newTitle" placeholder="z. B. Sommerfest 2026" /></label>
+          <label>Text <small>optional</small><textarea name="newText" rows={3} placeholder="Was soll hier stehen?" /></label>
+          <button className="button button-light" type="submit">Block anlegen <ArrowRight size={17} /></button>
+        </form>
+        <section className="content-manager-list">
+          <div><p className="kicker">AKTUELLE BLÖCKE</p></div>
+          {items.length ? (
+            <form onSubmit={saveAll}>
+              {items.map((item, index) => (
+                <article key={item.id} className="content-manager-row">
+                  {item.image ? <img className="partner-admin-logo" src={item.image} alt="" /> : <span className="content-manager-noimage">Kein Bild</span>}
+                  <div>
+                    <label>Titel<input required name={`title-${index}`} defaultValue={item.title} /></label>
+                    <label>Text<textarea name={`text-${index}`} rows={3} defaultValue={item.text} /></label>
+                    <label>Bild<input type="file" accept="image/png,image/jpeg,image/webp" onChange={(event) => { const file = event.target.files?.[0]; if (file) void uploadImage(item.id, file); }} /></label>
+                    <button className="danger" type="button" onClick={() => remove(item)}>Löschen</button>
+                  </div>
+                </article>
+              ))}
+              <button className="button button-light" type="submit">Änderungen speichern <Check size={17} /></button>
+            </form>
+          ) : <p className="content-manager-empty">Noch keine Zusatzblöcke angelegt.</p>}
+        </section>
+      </div>
+    </div>
+  </div>;
+}
+
 function SiteImageManager({
   open,
   close,
@@ -1604,6 +1651,7 @@ function App() {
     downloads.map((download) => ({ ...download })),
   );
   const [livePartners, setLivePartners] = useState<PartnerItem[]>([]);
+  const [liveCustomBlocks, setLiveCustomBlocks] = useState<CustomBlock[]>([]);
   const [liveCopy, setLiveCopy] = useState<Record<string, string>>({});
   const [editMode, setEditMode] = useState(false);
   const [liveBoard, setLiveBoard] = useState<BoardMember[]>(
@@ -1857,6 +1905,16 @@ function App() {
       if (Array.isArray(data?.value?.items)) setLiveFacilities(data.value.items as FacilityItem[]);
     };
     void loadFacilities();
+  }, []);
+
+  useEffect(() => {
+    const client = supabase;
+    if (!client) return;
+    const loadCustomBlocks = async () => {
+      const { data } = await client.from("club_content").select("value").eq("key", "custom_blocks").maybeSingle();
+      if (Array.isArray(data?.value?.items)) setLiveCustomBlocks(data.value.items as CustomBlock[]);
+    };
+    void loadCustomBlocks();
   }, []);
 
   useEffect(() => {
@@ -3670,6 +3728,58 @@ function App() {
     setLiveFacilities(items); setAdminNotice(`„${item.title}“ wurde gelöscht.`);
   };
 
+  const saveCustomBlocks = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    if (!supabase || !adminUserId) return;
+    const form = new FormData(event.currentTarget);
+    const items = liveCustomBlocks.map((block, index) => ({
+      ...block,
+      title: String(form.get(`title-${index}`) ?? block.title).trim(),
+      text: String(form.get(`text-${index}`) ?? block.text).trim(),
+    }));
+    const { error } = await supabase.from("club_content").upsert({ key: "custom_blocks", value: { items }, updated_by: adminUserId });
+    if (error) { setAdminNotice(`Zusatzblöcke konnten nicht gespeichert werden: ${friendlyDbError(error)}`); return; }
+    setLiveCustomBlocks(items); setAdminNotice("Zusatzblöcke aktualisiert.");
+  };
+
+  const addCustomBlock = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    if (!supabase || !adminUserId) return;
+    const form = new FormData(event.currentTarget);
+    const title = String(form.get("newTitle") ?? "").trim();
+    if (!title) return;
+    const block: CustomBlock = {
+      id: crypto.randomUUID(),
+      title,
+      text: String(form.get("newText") ?? "").trim(),
+      image: "",
+    };
+    const items = [...liveCustomBlocks, block];
+    const { error } = await supabase.from("club_content").upsert({ key: "custom_blocks", value: { items }, updated_by: adminUserId });
+    if (error) { setAdminNotice(`Block konnte nicht angelegt werden: ${friendlyDbError(error)}`); return; }
+    setLiveCustomBlocks(items); event.currentTarget.reset(); setAdminNotice(`„${title}“ wurde hinzugefügt.`);
+  };
+
+  const uploadCustomBlockImage = async (id: string, file: File) => {
+    if (!supabase || !adminUserId) return;
+    let url: string;
+    try { url = await uploadClubMediaFile("blocks", file); }
+    catch (error) { setAdminNotice(`Bild-Upload fehlgeschlagen: ${(error as Error).message}`); return; }
+    const items = liveCustomBlocks.map((block) => (block.id === id ? { ...block, image: url } : block));
+    const { error } = await supabase.from("club_content").upsert({ key: "custom_blocks", value: { items }, updated_by: adminUserId });
+    if (error) { setAdminNotice(`Bild konnte nicht gespeichert werden: ${friendlyDbError(error)}`); return; }
+    setLiveCustomBlocks(items);
+  };
+
+  const deleteCustomBlock = async (item: CustomBlock) => {
+    if (!supabase || !adminUserId || !window.confirm(`„${item.title}“ wirklich löschen?`)) return;
+    const items = liveCustomBlocks.filter((block) => block.id !== item.id);
+    const { error } = await supabase.from("club_content").upsert({ key: "custom_blocks", value: { items }, updated_by: adminUserId });
+    if (error) { setAdminNotice(`Konnte nicht gelöscht werden: ${friendlyDbError(error)}`); return; }
+    if (item.image) await removeClubMediaFile(item.image);
+    setLiveCustomBlocks(items); setAdminNotice(`„${item.title}“ wurde gelöscht.`);
+  };
+
   const uploadSiteImage = async (key: SiteImageKey, file: File) => {
     if (!supabase || !adminUserId) return;
     const safeName = file.name.toLowerCase().replace(/[^a-z0-9._-]/g, "-");
@@ -3901,6 +4011,15 @@ function App() {
         addOne={(event) => void addFacility(event)}
         remove={(item) => void deleteFacility(item)}
         uploadImage={(id, file) => void uploadFacilityImage(id, file)}
+      />
+      <CustomBlockManager
+        open={adminEditor === "blocks" && canManageGeneralContent}
+        close={() => setAdminEditor(null)}
+        items={liveCustomBlocks}
+        saveAll={(event) => void saveCustomBlocks(event)}
+        addOne={(event) => void addCustomBlock(event)}
+        remove={(item) => void deleteCustomBlock(item)}
+        uploadImage={(id, file) => void uploadCustomBlockImage(id, file)}
       />
       <SiteImageManager
         open={adminEditor === "media"}
@@ -4265,6 +4384,22 @@ function App() {
             </div>
           </div>
         </section>
+
+        {liveCustomBlocks.length > 0 && (
+          <section className="section custom-blocks-section route-home">
+            <div className="container">
+              <div className="custom-blocks-grid motion">
+                {liveCustomBlocks.map((block) => (
+                  <article className="custom-block-card" key={block.id}>
+                    {block.image && <img loading="lazy" src={block.image} alt={block.title} />}
+                    <h3>{block.title}</h3>
+                    {block.text && <p>{block.text}</p>}
+                  </article>
+                ))}
+              </div>
+            </div>
+          </section>
+        )}
 
         <section className="section facilities route-home route-anlage" id="anlage">
           <div className="container">
@@ -5923,6 +6058,11 @@ function App() {
                 <Settings2 size={18} /> Anlage-Bereiche
               </a>
             )}
+            {canManageGeneralContent && (
+              <a onClick={() => setAdminEditor("blocks")}>
+                <ImagePlus size={18} /> Zusatzblöcke
+              </a>
+            )}
             {canManageInbox && (
               <a onClick={() => setAdminEditor("inbox")}>
                 <Mail size={18} /> Postfach
@@ -6084,6 +6224,13 @@ function App() {
                 <button className="admin-task" onClick={() => setAdminEditor("facilities")}>
                   <Settings2 size={19} />
                   <span><b>Anlage-Bereiche verwalten</b><small>Außenplätze, Halle, Padel &amp; Co.</small></span>
+                  <ArrowRight size={18} />
+                </button>
+              )}
+              {canManageGeneralContent && (
+                <button className="admin-task" onClick={() => setAdminEditor("blocks")}>
+                  <ImagePlus size={19} />
+                  <span><b>Zusatzblöcke verwalten</b><small>Eigene Absätze mit Bild hinzufügen</small></span>
                   <ArrowRight size={18} />
                 </button>
               )}
