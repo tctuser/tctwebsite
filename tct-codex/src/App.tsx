@@ -1,4 +1,4 @@
-import { lazy, Suspense, useEffect, useState, type CSSProperties, type FormEvent } from "react";
+import { createContext, lazy, Suspense, useContext, useEffect, useState, type CSSProperties, type FormEvent } from "react";
 import {
   ArrowLeft,
   ArrowDownRight,
@@ -18,6 +18,7 @@ import {
   Menu,
   MoveRight,
   Newspaper,
+  Pencil,
   Phone,
   Search,
   Settings2,
@@ -1423,6 +1424,51 @@ const sectionPageInfo: Record<string, { eyebrow: string; title: string; accent: 
   impressum: { eyebrow: "Tennisclub Trier 1888 e.V.", title: "Impres", accent: "sum.", docTitle: "Impressum", text: "Angaben zum Anbieter und Kontaktmöglichkeiten des Tennisclub Trier." },
 };
 
+type SiteCopyApi = {
+  copy: Record<string, string>;
+  editMode: boolean;
+  save: (id: string, value: string) => void;
+};
+const SiteCopyContext = createContext<SiteCopyApi>({
+  copy: {},
+  editMode: false,
+  save: () => {},
+});
+
+// Editierbarer Text für den Seiteninhaltsmodus: als eigene Top-Level-
+// Komponente (statt in App() verschachtelt) definiert, damit React ihre
+// Identität zwischen Renders stabil hält — sonst würde jeder Tastenanschlag
+// woanders auf der Seite das contenteditable-Element neu mounten und den
+// Cursor/Fokus killen. Daten kommen daher über Context statt Props.
+function EditableText({
+  id,
+  defaultValue,
+  as: Tag = "span",
+  className,
+}: {
+  id: string;
+  defaultValue: string;
+  as?: "span" | "p" | "h1" | "h2" | "h3" | "div" | "b" | "small";
+  className?: string;
+}) {
+  const { copy, editMode, save } = useContext(SiteCopyContext);
+  const value = copy[id] ?? defaultValue;
+  if (!editMode) return <Tag className={className}>{value}</Tag>;
+  return (
+    <Tag
+      className={`${className ?? ""} editable-text-active`.trim()}
+      contentEditable
+      suppressContentEditableWarning
+      onBlur={(event) => {
+        const next = event.currentTarget.textContent?.trim() ?? "";
+        if (next && next !== value) save(id, next);
+      }}
+    >
+      {value}
+    </Tag>
+  );
+}
+
 function App() {
   // Client-seitiges Routing: currentPath ist reaktiver State statt eines
   // einmalig beim Laden gelesenen const. Ein globaler Klick-Interceptor
@@ -1558,6 +1604,8 @@ function App() {
     downloads.map((download) => ({ ...download })),
   );
   const [livePartners, setLivePartners] = useState<PartnerItem[]>([]);
+  const [liveCopy, setLiveCopy] = useState<Record<string, string>>({});
+  const [editMode, setEditMode] = useState(false);
   const [liveBoard, setLiveBoard] = useState<BoardMember[]>(
     board.map(([name, role]) => ({
       id: name.toLowerCase().replace(/[^a-z0-9]+/g, "-"),
@@ -1809,6 +1857,17 @@ function App() {
       if (Array.isArray(data?.value?.items)) setLiveFacilities(data.value.items as FacilityItem[]);
     };
     void loadFacilities();
+  }, []);
+
+  useEffect(() => {
+    const client = supabase;
+    if (!client) return;
+    const loadCopy = async () => {
+      const { data } = await client.from("club_content").select("value").eq("key", "site_copy").maybeSingle();
+      const texts = data?.value?.texts;
+      if (texts && typeof texts === "object") setLiveCopy(texts as Record<string, string>);
+    };
+    void loadCopy();
   }, []);
 
   useEffect(() => {
@@ -3265,6 +3324,18 @@ function App() {
     setAdminNotice("Die neue Akzentfarbe ist für alle Besucher sichtbar.");
   };
 
+  const saveCopyField = async (id: string, value: string) => {
+    if (!supabase || !adminUserId) return;
+    const nextCopy = { ...liveCopy, [id]: value };
+    setLiveCopy(nextCopy);
+    const { error } = await supabase.from("club_content").upsert({
+      key: "site_copy",
+      value: { texts: nextCopy },
+      updated_by: adminUserId,
+    });
+    if (error) setAdminNotice(`Text konnte nicht gespeichert werden: ${friendlyDbError(error)}`);
+  };
+
   const saveClubSettings = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     if (!supabase || !adminUserId) return;
@@ -3775,6 +3846,7 @@ function App() {
   }
 
   return (
+    <SiteCopyContext.Provider value={{ copy: liveCopy, editMode, save: saveCopyField }}>
     <main className={`${isBookingPage ? "booking-page" : isTournamentContactPage ? "tournament-contact-page" : ""} ${sectionPage ? "section-page" : ""}`}>
       <NewsManager
         open={adminEditor === "news"}
@@ -3901,6 +3973,16 @@ function App() {
           >
             <Search size={19} />
           </button>
+          {adminUserId && editorialRoles.includes(adminRole) && (
+            <button
+              className={`admin-trigger edit-mode-trigger${editMode ? " active" : ""}`}
+              onClick={() => setEditMode((value) => !value)}
+              aria-pressed={editMode}
+            >
+              <Pencil size={14} />
+              {editMode ? "Bearbeiten beenden" : "Texte bearbeiten"}
+            </button>
+          )}
           {adminUserId ? (
             <button
               className="admin-trigger"
@@ -3947,12 +4029,12 @@ function App() {
         </div>
       </header>
 
-      {pageInfo && (
+      {pageInfo && sectionPage && (
         <section className="section-page-hero" aria-labelledby="section-page-title">
           <div className="container">
-            <p className="eyebrow"><span /> {pageInfo.eyebrow}</p>
-            <h1 id="section-page-title">{pageInfo.title}<br /><em>{pageInfo.accent}</em></h1>
-            <p>{pageInfo.text}</p>
+            <p className="eyebrow"><span /> <EditableText id={`page.${sectionPage}.eyebrow`} defaultValue={pageInfo.eyebrow} /></p>
+            <h1 id="section-page-title"><EditableText id={`page.${sectionPage}.title`} defaultValue={pageInfo.title} /><br /><em><EditableText id={`page.${sectionPage}.accent`} defaultValue={pageInfo.accent} /></em></h1>
+            <p><EditableText id={`page.${sectionPage}.text`} as="span" defaultValue={pageInfo.text} /></p>
           </div>
         </section>
       )}
@@ -3967,23 +4049,26 @@ function App() {
         <div className="hero-grid" />
         <div className="hero-content container">
           <p className="eyebrow hero-eyebrow">
-            <span /> Tennisclub Trier · seit 1888
+            <span /> <EditableText id="hero.eyebrow" defaultValue="Tennisclub Trier · seit 1888" />
           </p>
           <h1 id="hero-title">
-            <span>Hier spielt</span>
-            <em>Trier.</em>
+            <span><EditableText id="hero.title" defaultValue="Hier spielt" /></span>
+            <em><EditableText id="hero.titleAccent" defaultValue="Trier." /></em>
           </h1>
           <div className="hero-bottom">
             <p>
-              Leistungsorientiertes Tennis, freundliches Miteinander und eine
-              besondere Anlage am Moselstadion.
+              <EditableText
+                id="hero.lead"
+                as="span"
+                defaultValue="Leistungsorientiertes Tennis, freundliches Miteinander und eine besondere Anlage am Moselstadion."
+              />
             </p>
             <div className="hero-ctas">
               <a className="button button-light" href="/mitglied-werden">
-                Mitglied werden <ArrowRight size={18} />
+                <EditableText id="hero.cta1" defaultValue="Mitglied werden" /> <ArrowRight size={18} />
               </a>
               <a className="button button-outline hero-discover" href="/club">
-                Entdecke den Club <ArrowRight size={18} />
+                <EditableText id="hero.cta2" defaultValue="Entdecke den Club" /> <ArrowRight size={18} />
               </a>
             </div>
           </div>
@@ -3993,7 +4078,7 @@ function App() {
           href="#aktuell"
           aria-label="Zum nächsten Abschnitt scrollen"
         >
-          <span>Scroll to play</span>
+          <span><EditableText id="hero.scrollCue" defaultValue="Scroll to play" /></span>
           <i>
             <ArrowRight size={16} />
           </i>
@@ -4038,10 +4123,10 @@ function App() {
           <div className="container">
             <div className="section-head">
               <p className="eyebrow">
-                <span /> Im Fokus
+                <span /> <EditableText id="home.focus.eyebrow" defaultValue="Im Fokus" />
               </p>
               <a className="text-link" href="/turniere">
-                Alle Termine <ArrowRight size={17} />
+                <EditableText id="home.focus.link" defaultValue="Alle Termine" /> <ArrowRight size={17} />
               </a>
             </div>
             <article className="feature-event motion">
@@ -4098,17 +4183,20 @@ function App() {
         <section className="section club-intro route-club" id="verein">
           <div className="container intro-grid motion">
             <p className="eyebrow">
-              <span /> Der Club
+              <span /> <EditableText id="home.clubIntro.eyebrow" defaultValue="Der Club" />
             </p>
             <div>
               <h2>
-                Mehr als ein
+                <EditableText id="home.clubIntro.title" defaultValue="Mehr als ein" />
                 <br />
-                <em>Aufschlag.</em>
+                <em><EditableText id="home.clubIntro.titleAccent" defaultValue="Aufschlag." /></em>
               </h2>
               <p className="lead">
-                Ein Club für Menschen, die Tennis lieben — ganz gleich, ob sie
-                einsteigen, trainieren oder sich sportlich messen möchten.
+                <EditableText
+                  id="home.clubIntro.lead"
+                  as="span"
+                  defaultValue="Ein Club für Menschen, die Tennis lieben — ganz gleich, ob sie einsteigen, trainieren oder sich sportlich messen möchten."
+                />
               </p>
               <div
                 className="club-members"
@@ -4117,18 +4205,18 @@ function App() {
                 <span className="club-member-orbit" aria-hidden="true"><i /></span>
                 <div>
                   <b>600<sup>+</sup></b>
-                  <p>Mitglieder<br />im TCT</p>
+                  <p><EditableText id="home.clubIntro.membersLabel1" defaultValue="Mitglieder" /><br /><EditableText id="home.clubIntro.membersLabel2" defaultValue="im TCT" /></p>
                 </div>
-                <small>Gemeinsam<br />auf dem Platz</small>
+                <small><EditableText id="home.clubIntro.membersCaption1" defaultValue="Gemeinsam" /><br /><EditableText id="home.clubIntro.membersCaption2" defaultValue="auf dem Platz" /></small>
               </div>
               <a className="text-link" href="/club#geschichte">
-                Unsere Geschichte <ArrowRight size={17} />
+                <EditableText id="home.clubIntro.link" defaultValue="Unsere Geschichte" /> <ArrowRight size={17} />
               </a>
             </div>
             <aside className="club-stamp">
-              <span>TRADITION</span>
+              <span><EditableText id="home.clubIntro.stamp1" defaultValue="TRADITION" /></span>
               <b>{traditionYears}</b>
-              <span>JAHRE · SEIT 1888</span>
+              <span><EditableText id="home.clubIntro.stamp2" defaultValue="JAHRE · SEIT 1888" /></span>
             </aside>
           </div>
         </section>
@@ -4137,40 +4225,40 @@ function App() {
           <div className="container">
             <div className="quick-links-heading">
               <p className="eyebrow">
-                <span /> Direkt zum Ziel
+                <span /> <EditableText id="home.quickLinks.eyebrow" defaultValue="Direkt zum Ziel" />
               </p>
-              <h2 id="quick-links-title">Was möchtest du machen?</h2>
+              <h2 id="quick-links-title"><EditableText id="home.quickLinks.title" defaultValue="Was möchtest du machen?" /></h2>
             </div>
             <div className="quick-links-grid">
               <a href="/mitglied-werden">
                 <span>01</span>
                 <div>
-                  <h3>Mitglied werden</h3>
-                  <p>Beiträge ansehen und Aufnahme beantragen.</p>
+                  <h3><EditableText id="home.quickLinks.card1.title" defaultValue="Mitglied werden" /></h3>
+                  <p><EditableText id="home.quickLinks.card1.text" defaultValue="Beiträge ansehen und Aufnahme beantragen." /></p>
                 </div>
                 <ArrowRight size={20} />
               </a>
               <a href="/booking">
                 <span>02</span>
                 <div>
-                  <h3>Platz buchen</h3>
-                  <p>Freie Plätze sehen und direkt reservieren.</p>
+                  <h3><EditableText id="home.quickLinks.card2.title" defaultValue="Platz buchen" /></h3>
+                  <p><EditableText id="home.quickLinks.card2.text" defaultValue="Freie Plätze sehen und direkt reservieren." /></p>
                 </div>
                 <ArrowRight size={20} />
               </a>
               <a href="/teams">
                 <span>03</span>
                 <div>
-                  <h3>Teams entdecken</h3>
-                  <p>Alle Damen-, Herren- und Jugendteams.</p>
+                  <h3><EditableText id="home.quickLinks.card3.title" defaultValue="Teams entdecken" /></h3>
+                  <p><EditableText id="home.quickLinks.card3.text" defaultValue="Alle Damen-, Herren- und Jugendteams." /></p>
                 </div>
                 <ArrowRight size={20} />
               </a>
               <a href="/kontakt">
                 <span>04</span>
                 <div>
-                  <h3>Kontakt aufnehmen</h3>
-                  <p>Fragen stellen oder den Club kennenlernen.</p>
+                  <h3><EditableText id="home.quickLinks.card4.title" defaultValue="Kontakt aufnehmen" /></h3>
+                  <p><EditableText id="home.quickLinks.card4.text" defaultValue="Fragen stellen oder den Club kennenlernen." /></p>
                 </div>
                 <ArrowRight size={20} />
               </a>
@@ -4182,7 +4270,7 @@ function App() {
           <div className="container">
             <div className="section-head inverse">
               <p className="eyebrow">
-                <span /> Unsere Anlage
+                <span /> <EditableText id="anlage.intro.eyebrow" defaultValue="Unsere Anlage" />
               </p>
               <p>{liveClub.openingHours}</p>
             </div>
@@ -4210,7 +4298,7 @@ function App() {
                   className="button button-outline"
                   href="/booking"
                 >
-                  Jetzt Platz buchen <ArrowRight size={18} />
+                  <EditableText id="anlage.bookCta" defaultValue="Jetzt Platz buchen" /> <ArrowRight size={18} />
                 </a>
               </div>
             </div>
@@ -4249,9 +4337,9 @@ function App() {
           <div className="container">
             <div className="section-head">
               <p className="eyebrow">
-                <span /> Vier Perspektiven
+                <span /> <EditableText id="anlage.experience.eyebrow" defaultValue="Vier Perspektiven" />
               </p>
-              <p className="section-note">Dein Club, dein Spiel.</p>
+              <p className="section-note"><EditableText id="anlage.experience.note" defaultValue="Dein Club, dein Spiel." /></p>
             </div>
             <div className="experience-grid motion">
               {liveFacilities.map((item, index) => (
@@ -4280,7 +4368,7 @@ function App() {
           <div className="container">
             <div className="section-head">
               <p className="eyebrow">
-                <span /> Mannschaften
+                <span /> <EditableText id="teams.intro.eyebrow" defaultValue="Mannschaften" />
               </p>
               <a
                 className="text-link"
@@ -4288,22 +4376,25 @@ function App() {
                 target="_blank"
                 rel="noreferrer"
               >
-                Alle Tabellen <ExternalArrow />
+                <EditableText id="teams.intro.link" defaultValue="Alle Tabellen" /> <ExternalArrow />
               </a>
             </div>
             <div className="teams-layout motion">
               <div>
                 <p className="team-count">
-                  40 <span>Mannschaften</span>
+                  40 <span><EditableText id="teams.intro.countLabel" defaultValue="Mannschaften" /></span>
                 </p>
                 <h2>
-                  Gemeinsam
+                  <EditableText id="teams.intro.title" defaultValue="Gemeinsam" />
                   <br />
-                  <em>antreten.</em>
+                  <em><EditableText id="teams.intro.titleAccent" defaultValue="antreten." /></em>
                 </h2>
                 <p className="team-intro">
-                  Die Mannschaften des TCT repräsentieren den Club auf den
-                  Plätzen der Region.
+                  <EditableText
+                    id="teams.intro.text"
+                    as="span"
+                    defaultValue="Die Mannschaften des TCT repräsentieren den Club auf den Plätzen der Region."
+                  />
                 </p>
               </div>
               <div className="team-panel">
@@ -4320,7 +4411,7 @@ function App() {
                   ))}
                 </div>
                 <article>
-                  <p className="kicker">TCT MANNSCHAFTEN</p>
+                  <p className="kicker"><EditableText id="teams.panel.kicker" defaultValue="TCT MANNSCHAFTEN" /></p>
                   <h3>{liveTeams[teamGroup].name}</h3>
                   <p>{liveTeams[teamGroup].text}</p>
                   <div className="team-note">{liveTeams[teamGroup].note}</div>
@@ -4329,7 +4420,7 @@ function App() {
                     target="_blank"
                     rel="noreferrer"
                   >
-                    Zu den Tabellen <ArrowRight size={18} />
+                    <EditableText id="teams.panel.link" defaultValue="Zu den Tabellen" /> <ArrowRight size={18} />
                   </a>
                 </article>
               </div>
@@ -4367,17 +4458,19 @@ function App() {
           <div className="container official-teams-card motion">
             <div>
               <p className="eyebrow">
-                <span /> Offizielle Mannschaftsdaten
+                <span /> <EditableText id="teams.official.eyebrow" defaultValue="Offizielle Mannschaftsdaten" />
               </p>
               <h2>
-                Spieler, Spiele
+                <EditableText id="teams.official.title" defaultValue="Spieler, Spiele" />
                 <br />
-                und <em>Tabellen.</em>
+                <EditableText id="teams.official.titleMid" defaultValue="und" /> <em><EditableText id="teams.official.titleAccent" defaultValue="Tabellen." /></em>
               </h2>
               <p>
-                Die vollständigen Meldelisten, Spielpläne und aktuellen
-                Tabellenstände werden direkt vom Tennisverband Rheinland-Pfalz
-                geführt.
+                <EditableText
+                  id="teams.official.text"
+                  as="span"
+                  defaultValue="Die vollständigen Meldelisten, Spielpläne und aktuellen Tabellenstände werden direkt vom Tennisverband Rheinland-Pfalz geführt."
+                />
               </p>
             </div>
             <a
@@ -4386,7 +4479,7 @@ function App() {
               target="_blank"
               rel="noreferrer"
             >
-              Zu allen Mannschaften <ExternalArrow />
+              <EditableText id="teams.official.link" defaultValue="Zu allen Mannschaften" /> <ExternalArrow />
             </a>
           </div>
         </section>
@@ -4395,16 +4488,16 @@ function App() {
           <div className="container">
             <div className="section-head">
               <p className="eyebrow">
-                <span /> Seit Generationen
+                <span /> <EditableText id="club.history.eyebrow" defaultValue="Seit Generationen" />
               </p>
               <p className="section-note">
-                Vier Kapitel. Eine gemeinsame Geschichte.
+                <EditableText id="club.history.note" defaultValue="Vier Kapitel. Eine gemeinsame Geschichte." />
               </p>
             </div>
             <h2>
-              Eine Geschichte,
+              <EditableText id="club.history.title" defaultValue="Eine Geschichte," />
               <br />
-              <em>die weiter spielt.</em>
+              <em><EditableText id="club.history.titleAccent" defaultValue="die weiter spielt." /></em>
             </h2>
             <div className="history-grid motion">
               {liveHistory.map((entry) => (
@@ -4435,23 +4528,25 @@ function App() {
           </div>
           <div className="school-copy">
             <p className="eyebrow">
-              <span /> Tennisschule Point
+              <span /> <EditableText id="school.eyebrow" defaultValue="Tennisschule Point" />
             </p>
             <h2>
-              Dein Spiel.
+              <EditableText id="school.title" defaultValue="Dein Spiel." />
               <br />
-              <em>Dein Tempo.</em>
+              <em><EditableText id="school.titleAccent" defaultValue="Dein Tempo." /></em>
             </h2>
             <p>
-              Trainingsangebote für unterschiedliche Altersbereiche und
-              Leistungsniveaus — vom Einstieg bis zum leistungsorientierten
-              Tennis.
+              <EditableText
+                id="school.text"
+                as="span"
+                defaultValue="Trainingsangebote für unterschiedliche Altersbereiche und Leistungsniveaus — vom Einstieg bis zum leistungsorientierten Tennis."
+              />
             </p>
             <a
               className="button button-dark"
               href="mailto:mgtrier@t-online.de?subject=Tennistraining%20beim%20TCT"
             >
-              Training anfragen <ExternalArrow />
+              <EditableText id="school.cta" defaultValue="Training anfragen" /> <ExternalArrow />
             </a>
           </div>
         </section>
@@ -4460,15 +4555,15 @@ function App() {
           <div className="container">
             <div className="section-head">
               <p className="eyebrow">
-                <span /> Aufschlag für 2026
+                <span /> <EditableText id="tournaments.eyebrow" defaultValue="Aufschlag für 2026" />
               </p>
-              <p className="section-note">Offizielle Turnierübersicht</p>
+              <p className="section-note"><EditableText id="tournaments.note" defaultValue="Offizielle Turnierübersicht" /></p>
             </div>
             <div className="tournament-head">
               <h2>
-                Der Kalender
+                <EditableText id="tournaments.title" defaultValue="Der Kalender" />
                 <br />
-                <em>des Spiels.</em>
+                <em><EditableText id="tournaments.titleAccent" defaultValue="des Spiels." /></em>
               </h2>
               <div className="filter-row">
                 {(
@@ -4521,8 +4616,8 @@ function App() {
         <section className="section tournament-contact-section" id="turnier-anmeldung">
           <div className="container tournament-contact-grid">
             <div>
-              <p className="eyebrow"><span /> Turnier-Service</p>
-              <h1>Fragen.<br /><em>Anmelden.</em></h1>
+              <p className="eyebrow"><span /> <EditableText id="tournamentContact.eyebrow" defaultValue="Turnier-Service" /></p>
+              <h1><EditableText id="tournamentContact.title" defaultValue="Fragen." /><br /><em><EditableText id="tournamentContact.titleAccent" defaultValue="Anmelden." /></em></h1>
               <p className="tournament-contact-lead">Für <strong>{selectedTournamentTitle}</strong>. Deine Nachricht geht direkt an die zuständige Turnierleitung.</p>
               <a className="text-link" href="/#turniere">Zur Turnierübersicht <ArrowLeft size={17} /></a>
             </div>
@@ -4576,13 +4671,13 @@ function App() {
             <div className="container">
               <div className="section-head">
                 <p className="eyebrow">
-                  <span /> Aktuelles
+                  <span /> <EditableText id="news.eyebrow" defaultValue="Aktuelles" />
                 </p>
                 <button
                   className="text-link archive-trigger"
                   onClick={() => void loadNewsArchive()}
                 >
-                  Alle News <ArrowRight size={17} />
+                  <EditableText id="news.link" defaultValue="Alle News" /> <ArrowRight size={17} />
                 </button>
               </div>
               <div className="news-grid">
@@ -4628,19 +4723,19 @@ function App() {
           <div className="container">
             <div className="section-head">
               <p className="eyebrow">
-                <span /> Seit 2021
+                <span /> <EditableText id="newsArchive.eyebrow" defaultValue="Seit 2021" />
               </p>
               <button
                 className="text-link archive-trigger"
                 onClick={() => void loadNewsArchive()}
               >
-                Alle Artikel öffnen <ArrowRight size={17} />
+                <EditableText id="newsArchive.link" defaultValue="Alle Artikel öffnen" /> <ArrowRight size={17} />
               </button>
             </div>
             <h2>
-              Vereins-
+              <EditableText id="newsArchive.title" defaultValue="Vereins-" />
               <br />
-              <em>archiv.</em>
+              <em><EditableText id="newsArchive.titleAccent" defaultValue="archiv." /></em>
             </h2>
             <div className="legacy-news-grid motion">
               {legacyNews.map(([date, title]) => {
@@ -4678,23 +4773,26 @@ function App() {
           <div className="container membership-grid motion">
             <div className="membership-copy">
               <p className="eyebrow">
-                <span /> Mitglied werden
+                <span /> <EditableText id="membership.eyebrow" defaultValue="Mitglied werden" />
               </p>
               <h2>
-                Dein Platz
+                <EditableText id="membership.title" defaultValue="Dein Platz" />
                 <br />
-                im <em>Club.</em>
+                <EditableText id="membership.titleMid" defaultValue="im" /> <em><EditableText id="membership.titleAccent" defaultValue="Club." /></em>
               </h2>
               <p>
-                Ob erste Schritte auf dem Platz oder sportlicher Anspruch: Im
-                TCT bist du willkommen.
+                <EditableText
+                  id="membership.text"
+                  as="span"
+                  defaultValue="Ob erste Schritte auf dem Platz oder sportlicher Anspruch: Im TCT bist du willkommen."
+                />
               </p>
               <a className="button button-dark membership-contact-cta" href="/kontakt">
-                Kontaktformular ausfüllen <ArrowRight size={18} />
+                <EditableText id="membership.cta" defaultValue="Kontaktformular ausfüllen" /> <ArrowRight size={18} />
               </a>
             </div>
             <div className="prices">
-              <p className="kicker">JAHRESBEITRÄGE</p>
+              <p className="kicker"><EditableText id="membership.pricesKicker" defaultValue="JAHRESBEITRÄGE" /></p>
               {liveMembership.map(({ name, price, monthly }) => (
                 <div className="price-row" key={name}>
                   <div>
@@ -4716,20 +4814,23 @@ function App() {
           <div className="container">
             <div className="section-head">
               <p className="eyebrow">
-                <span /> Service
+                <span /> <EditableText id="downloads.eyebrow" defaultValue="Service" />
               </p>
-              <p className="section-note">Offizielle Vereinsunterlagen</p>
+              <p className="section-note"><EditableText id="downloads.note" defaultValue="Offizielle Vereinsunterlagen" /></p>
             </div>
             <div className="downloads-layout motion">
               <div>
                 <h2>
-                  Alles Wichtige.
+                  <EditableText id="downloads.title" defaultValue="Alles Wichtige." />
                   <br />
-                  <em>Direkt da.</em>
+                  <em><EditableText id="downloads.titleAccent" defaultValue="Direkt da." /></em>
                 </h2>
                 <p>
-                  Formulare und Preisübersichten des TCT zum Öffnen, Speichern
-                  oder Ausdrucken.
+                  <EditableText
+                    id="downloads.text"
+                    as="span"
+                    defaultValue="Formulare und Preisübersichten des TCT zum Öffnen, Speichern oder Ausdrucken."
+                  />
                 </p>
               </div>
               <div className="downloads-list">
@@ -4759,16 +4860,16 @@ function App() {
           <div className="container">
             <div className="section-head">
               <p className="eyebrow">
-                <span /> Für den Club
+                <span /> <EditableText id="board.eyebrow" defaultValue="Für den Club" />
               </p>
               <a className="text-link" href="/kontakt">
-                Kontakt aufnehmen <ArrowRight size={17} />
+                <EditableText id="board.link" defaultValue="Kontakt aufnehmen" /> <ArrowRight size={17} />
               </a>
             </div>
             <h2>
-              Menschen mit
+              <EditableText id="board.title" defaultValue="Menschen mit" />
               <br />
-              <em>Bewegung.</em>
+              <em><EditableText id="board.titleAccent" defaultValue="Bewegung." /></em>
             </h2>
             <div className="board-grid motion">
               {liveBoard.map((member, i) => (
@@ -4803,17 +4904,20 @@ function App() {
         <section className="social-section route-home">
           <div className="container">
             <p className="eyebrow">
-              <span /> TCT Socials
+              <span /> <EditableText id="social.eyebrow" defaultValue="TCT Socials" />
             </p>
             <div>
               <h2>
-                Folge dem
+                <EditableText id="social.title" defaultValue="Folge dem" />
                 <br />
-                <em>Club.</em>
+                <em><EditableText id="social.titleAccent" defaultValue="Club." /></em>
               </h2>
               <p>
-                Aktuelle Eindrücke, Turniermomente und Clubleben direkt aus
-                Trier.
+                <EditableText
+                  id="social.text"
+                  as="span"
+                  defaultValue="Aktuelle Eindrücke, Turniermomente und Clubleben direkt aus Trier."
+                />
               </p>
             </div>
             <nav aria-label="TCT Social Media">
@@ -4835,12 +4939,12 @@ function App() {
           <div className="container contact-grid">
             <div>
               <p className="eyebrow">
-                <span /> Kontakt
+                <span /> <EditableText id="contact.eyebrow" defaultValue="Kontakt" />
               </p>
               <h2>
-                Lass uns
+                <EditableText id="contact.title" defaultValue="Lass uns" />
                 <br />
-                <em>spielen.</em>
+                <em><EditableText id="contact.titleAccent" defaultValue="spielen." /></em>
               </h2>
               <div className="contact-details">
                 <a href={`mailto:${club.email}`}>
@@ -4865,7 +4969,7 @@ function App() {
               {formSent ? (
                 <div className="success">
                   <span>✓</span>
-                  <h3>Danke für dein Interesse.</h3>
+                  <h3><EditableText id="contact.form.successTitle" defaultValue="Danke für dein Interesse." /></h3>
                   <p>
                     {supabase
                       ? "Deine Anfrage ist beim Club eingegangen."
@@ -4874,10 +4978,10 @@ function App() {
                 </div>
               ) : (
                 <>
-                  <p className="kicker">INTERESSE AN EINER MITGLIEDSCHAFT</p>
+                  <p className="kicker"><EditableText id="contact.form.kicker" defaultValue="INTERESSE AN EINER MITGLIEDSCHAFT" /></p>
                   <input type="text" name="website" className="hp-field" tabIndex={-1} autoComplete="off" aria-hidden="true" />
                   <label>
-                    Name
+                    <EditableText id="contact.form.nameLabel" as="span" defaultValue="Name" />
                     <input
                       required
                       name="name"
@@ -4885,7 +4989,7 @@ function App() {
                     />
                   </label>
                   <label>
-                    E-Mail
+                    <EditableText id="contact.form.emailLabel" as="span" defaultValue="E-Mail" />
                     <input
                       required
                       type="email"
@@ -4894,7 +4998,7 @@ function App() {
                     />
                   </label>
                   <label>
-                    Nachricht
+                    <EditableText id="contact.form.messageLabel" as="span" defaultValue="Nachricht" />
                     <textarea
                       name="message"
                       placeholder="Wobei können wir dir helfen?"
@@ -4903,11 +5007,14 @@ function App() {
                   </label>
                   {contactError && <p className="form-error">{contactError}</p>}
                   <button className="button button-light" type="submit">
-                    Anfrage senden <MoveRight size={18} />
+                    <EditableText id="contact.form.submit" defaultValue="Anfrage senden" /> <MoveRight size={18} />
                   </button>
                   <p className="form-note">
-                    Deine Anfrage wird sicher im Club-Postfach gespeichert. Der
-                    Club meldet sich per E-Mail bei dir.
+                    <EditableText
+                      id="contact.form.note"
+                      as="span"
+                      defaultValue="Deine Anfrage wird sicher im Club-Postfach gespeichert. Der Club meldet sich per E-Mail bei dir."
+                    />
                   </p>
                 </>
               )}
@@ -4919,21 +5026,24 @@ function App() {
           <div className="container">
             <div className="section-head">
               <p className="eyebrow">
-                <span /> TCT in Bildern
+                <span /> <EditableText id="gallery.eyebrow" defaultValue="TCT in Bildern" />
               </p>
               <a className="text-link" href="/teams">
-                Unsere Teams <ArrowRight size={17} />
+                <EditableText id="gallery.link" defaultValue="Unsere Teams" /> <ArrowRight size={17} />
               </a>
             </div>
             <div className="gallery-intro">
               <h2>
-                Momente, die
+                <EditableText id="gallery.title" defaultValue="Momente, die" />
                 <br />
-                <em>bleiben.</em>
+                <em><EditableText id="gallery.titleAccent" defaultValue="bleiben." /></em>
               </h2>
               <p>
-                Training, Turniere, Mannschaften und das Clubleben am
-                Moselstadion. Ein Bild anklicken, um es groß zu sehen.
+                <EditableText
+                  id="gallery.text"
+                  as="span"
+                  defaultValue="Training, Turniere, Mannschaften und das Clubleben am Moselstadion. Ein Bild anklicken, um es groß zu sehen."
+                />
               </p>
             </div>
             <div className="gallery-mosaic motion">
@@ -4966,42 +5076,45 @@ function App() {
           <div className="container partner-grid">
             <div>
               <p className="eyebrow">
-                <span /> Partner & Förderer
+                <span /> <EditableText id="partner.eyebrow" defaultValue="Partner & Förderer" />
               </p>
               <h2>
-                Gemeinsam
+                <EditableText id="partner.title" defaultValue="Gemeinsam" />
                 <br />
-                <em>sichtbar.</em>
+                <em><EditableText id="partner.titleAccent" defaultValue="sichtbar." /></em>
               </h2>
               <p className="partner-copy">
-                Gute Partnerschaften machen mehr möglich: Nachwuchs fördern,
-                Turniere gestalten und Tennis in Trier erlebbar machen.
+                <EditableText
+                  id="partner.text"
+                  as="span"
+                  defaultValue="Gute Partnerschaften machen mehr möglich: Nachwuchs fördern, Turniere gestalten und Tennis in Trier erlebbar machen."
+                />
               </p>
               <a className="button" href="#partner-anfrage">
-                Partnergespräch starten <ArrowRight size={18} />
+                <EditableText id="partner.cta" defaultValue="Partnergespräch starten" /> <ArrowRight size={18} />
               </a>
             </div>
             <div className="partner-values motion">
               <article>
                 <span>01</span>
-                <h3>Turniere & Events</h3>
-                <p>Präsenz bei besonderen Momenten auf und neben dem Platz.</p>
+                <h3><EditableText id="partner.value1.title" defaultValue="Turniere & Events" /></h3>
+                <p><EditableText id="partner.value1.text" defaultValue="Präsenz bei besonderen Momenten auf und neben dem Platz." /></p>
               </article>
               <article>
                 <span>02</span>
-                <h3>Jugend fördern</h3>
-                <p>Unterstützung für Training, Camps und den TCT-Nachwuchs.</p>
+                <h3><EditableText id="partner.value2.title" defaultValue="Jugend fördern" /></h3>
+                <p><EditableText id="partner.value2.text" defaultValue="Unterstützung für Training, Camps und den TCT-Nachwuchs." /></p>
               </article>
               <article>
                 <span>03</span>
-                <h3>Clubleben stärken</h3>
-                <p>Ein lokales Engagement, das bei Mitgliedern ankommt.</p>
+                <h3><EditableText id="partner.value3.title" defaultValue="Clubleben stärken" /></h3>
+                <p><EditableText id="partner.value3.text" defaultValue="Ein lokales Engagement, das bei Mitgliedern ankommt." /></p>
               </article>
             </div>
           </div>
           {livePartners.length > 0 && (
             <div className="container public-partner-list">
-              <p className="eyebrow"><span /> Unsere Partner</p>
+              <p className="eyebrow"><span /> <EditableText id="partner.listEyebrow" defaultValue="Unsere Partner" /></p>
               <div>{livePartners.map((item) => <a key={item.id} href={item.website} target="_blank" rel="noreferrer" aria-label={`${item.name} – Website öffnen`}>
                 {item.logo ? <img src={item.logo} alt={item.name} /> : <span className={`partner-logo-sprite partner-logo-${item.id}`} role="img" aria-label={item.name} />}
                 {item.note && <small>{item.note}</small>}
@@ -5013,25 +5126,25 @@ function App() {
               {partnerInquirySent ? (
                 <div className="success">
                   <span>✓</span>
-                  <h3>Danke für dein Interesse.</h3>
-                  <p>Deine Partnerschaftsanfrage ist beim TCT eingegangen.</p>
+                  <h3><EditableText id="partnerForm.successTitle" defaultValue="Danke für dein Interesse." /></h3>
+                  <p><EditableText id="partnerForm.successText" defaultValue="Deine Partnerschaftsanfrage ist beim TCT eingegangen." /></p>
                 </div>
               ) : (
                 <>
                   <div className="partner-inquiry-copy">
-                    <p className="eyebrow"><span /> Partnerschaft anfragen</p>
-                    <h3>Lasst uns<br /><em>etwas bewegen.</em></h3>
-                    <p>Erzähl uns kurz, wer ihr seid und wie ihr den TCT unterstützen möchtet. Der Vorstand meldet sich persönlich bei euch.</p>
+                    <p className="eyebrow"><span /> <EditableText id="partnerForm.eyebrow" defaultValue="Partnerschaft anfragen" /></p>
+                    <h3><EditableText id="partnerForm.title" defaultValue="Lasst uns" /><br /><em><EditableText id="partnerForm.titleAccent" defaultValue="etwas bewegen." /></em></h3>
+                    <p><EditableText id="partnerForm.text" defaultValue="Erzähl uns kurz, wer ihr seid und wie ihr den TCT unterstützen möchtet. Der Vorstand meldet sich persönlich bei euch." /></p>
                   </div>
                   <div className="partner-inquiry-fields">
                     <input type="text" name="website" className="hp-field" tabIndex={-1} autoComplete="off" aria-hidden="true" />
-                    <label>Name<input required name="name" placeholder="Vor- und Nachname" /></label>
-                    <label>Unternehmen <small>optional</small><input name="company" placeholder="Name des Unternehmens" /></label>
-                    <label>E-Mail<input required type="email" name="email" placeholder="name@unternehmen.de" /></label>
-                    <label>Nachricht<textarea required name="message" rows={4} placeholder="Wofür interessiert ihr euch? Zum Beispiel Sponsoring, Event-Partnerschaft oder Jugendförderung." /></label>
+                    <label><EditableText id="partnerForm.nameLabel" as="span" defaultValue="Name" /><input required name="name" placeholder="Vor- und Nachname" /></label>
+                    <label><EditableText id="partnerForm.companyLabel" as="span" defaultValue="Unternehmen" /> <small>optional</small><input name="company" placeholder="Name des Unternehmens" /></label>
+                    <label><EditableText id="partnerForm.emailLabel" as="span" defaultValue="E-Mail" /><input required type="email" name="email" placeholder="name@unternehmen.de" /></label>
+                    <label><EditableText id="partnerForm.messageLabel" as="span" defaultValue="Nachricht" /><textarea required name="message" rows={4} placeholder="Wofür interessiert ihr euch? Zum Beispiel Sponsoring, Event-Partnerschaft oder Jugendförderung." /></label>
                     {partnerInquiryError && <p className="form-error">{partnerInquiryError}</p>}
-                    <button className="button button-light" type="submit">Partnerschaft anfragen <MoveRight size={18} /></button>
-                    <p className="form-note">Die Anfrage landet gesondert markiert im TCT-Postfach und wird vertraulich behandelt.</p>
+                    <button className="button button-light" type="submit"><EditableText id="partnerForm.submit" defaultValue="Partnerschaft anfragen" /> <MoveRight size={18} /></button>
+                    <p className="form-note"><EditableText id="partnerForm.note" defaultValue="Die Anfrage landet gesondert markiert im TCT-Postfach und wird vertraulich behandelt." /></p>
                   </div>
                 </>
               )}
@@ -5043,17 +5156,17 @@ function App() {
           <div className="container legal-layout">
             <div>
               <p className="eyebrow">
-                <span /> Rechtliches
+                <span /> <EditableText id="imprint.eyebrow" defaultValue="Rechtliches" />
               </p>
               <h2>
-                Klar.
+                <EditableText id="imprint.title" defaultValue="Klar." />
                 <br />
-                <em>Erreichbar.</em>
+                <em><EditableText id="imprint.titleAccent" defaultValue="Erreichbar." /></em>
               </h2>
             </div>
             <div className="legal-content">
               <article>
-                <h3>Angaben zum Verein</h3>
+                <h3><EditableText id="imprint.club.title" defaultValue="Angaben zum Verein" /></h3>
                 <p>
                   Tennisclub Trier 1888 e.V.<br />
                   Am Stadion 1<br />
@@ -5061,14 +5174,17 @@ function App() {
                 </p>
               </article>
               <article>
-                <h3>Vertretung</h3>
+                <h3><EditableText id="imprint.rep.title" defaultValue="Vertretung" /></h3>
                 <p>
-                  Der Verein wird durch seinen Vorstand vertreten. 1.
-                  Vorsitzender: Alexander Jelen. 2. Vorsitzender: Roland Mohr.
+                  <EditableText
+                    id="imprint.rep.text"
+                    as="span"
+                    defaultValue="Der Verein wird durch seinen Vorstand vertreten. 1. Vorsitzender: Alexander Jelen. 2. Vorsitzender: Roland Mohr."
+                  />
                 </p>
               </article>
               <article>
-                <h3>Kontakt</h3>
+                <h3><EditableText id="imprint.contact.title" defaultValue="Kontakt" /></h3>
                 <p>
                   Telefon: <a href={`tel:${club.phone.replaceAll(" ", "")}`}>{club.phone}</a>
                   <br />
@@ -5076,26 +5192,31 @@ function App() {
                 </p>
               </article>
               <article>
-                <h3>Verantwortung für Inhalte</h3>
+                <h3><EditableText id="imprint.responsibility.title" defaultValue="Verantwortung für Inhalte" /></h3>
                 <p>
-                  Verantwortlich für die Inhalte dieser Website ist der
-                  Tennisclub Trier 1888 e.V. Angaben zum Verein werden
-                  regelmäßig geprüft und bei Änderungen aktualisiert.
+                  <EditableText
+                    id="imprint.responsibility.text"
+                    as="span"
+                    defaultValue="Verantwortlich für die Inhalte dieser Website ist der Tennisclub Trier 1888 e.V. Angaben zum Verein werden regelmäßig geprüft und bei Änderungen aktualisiert."
+                  />
                 </p>
               </article>
               <article>
-                <h3>Streitbeilegung</h3>
+                <h3><EditableText id="imprint.dispute.title" defaultValue="Streitbeilegung" /></h3>
                 <p>
-                  Der Tennisclub Trier 1888 e.V. nimmt nicht an einem
-                  Streitbeilegungsverfahren vor einer
-                  Verbraucherschlichtungsstelle teil und ist hierzu auch nicht
-                  verpflichtet.
+                  <EditableText
+                    id="imprint.dispute.text"
+                    as="span"
+                    defaultValue="Der Tennisclub Trier 1888 e.V. nimmt nicht an einem Streitbeilegungsverfahren vor einer Verbraucherschlichtungsstelle teil und ist hierzu auch nicht verpflichtet."
+                  />
                 </p>
               </article>
               <p className="legal-note">
-                Vor dem finalen Livegang sollte der Vorstand die Angaben zur
-                Vertretung sowie mögliche Register- und Steuerangaben nochmals
-                verbindlich prüfen.
+                <EditableText
+                  id="imprint.legalNote"
+                  as="span"
+                  defaultValue="Vor dem finalen Livegang sollte der Vorstand die Angaben zur Vertretung sowie mögliche Register- und Steuerangaben nochmals verbindlich prüfen."
+                />
               </p>
             </div>
           </div>
@@ -5104,15 +5225,15 @@ function App() {
           <section className="home-partner-strip route-home" aria-labelledby="home-partners-title">
             <div className="container">
               <div>
-                <p className="eyebrow"><span /> Gemeinsam für Trier</p>
-                <h2 id="home-partners-title">Unsere Partner.</h2>
+                <p className="eyebrow"><span /> <EditableText id="homePartnerStrip.eyebrow" defaultValue="Gemeinsam für Trier" /></p>
+                <h2 id="home-partners-title"><EditableText id="homePartnerStrip.title" defaultValue="Unsere Partner." /></h2>
               </div>
               <div className="home-partner-logos">
                 {livePartners.slice(0, 6).map((item) => <a key={item.id} href={item.website} target="_blank" rel="noreferrer" aria-label={`${item.name} – Website öffnen`}>
                   {item.logo ? <img src={item.logo} alt={item.name} /> : <span className={`partner-logo-sprite partner-logo-${item.id}`} role="img" aria-label={item.name} />}
                 </a>)}
               </div>
-              <a className="text-link" href="/partner">Partner werden <ArrowRight size={17} /></a>
+              <a className="text-link" href="/partner"><EditableText id="homePartnerStrip.link" defaultValue="Partner werden" /> <ArrowRight size={17} /></a>
             </div>
           </section>
         )}
@@ -5125,9 +5246,9 @@ function App() {
               <img src={officialImages.logo} alt="TCT 1888" />
             </a>
             <p>
-              Tennisclub Trier 1888 e.V.
+              <EditableText id="footer.line1" defaultValue="Tennisclub Trier 1888 e.V." />
               <br />
-              Am Moselstadion.
+              <EditableText id="footer.line2" defaultValue="Am Moselstadion." />
             </p>
             <a className="footer-round" href="/" aria-label="Zur Startseite">
               <ArrowRight size={22} />
@@ -7744,6 +7865,7 @@ function App() {
         <p className="users-notice">{adminNotice}</p>
       )}
     </main>
+    </SiteCopyContext.Provider>
   );
 }
 
