@@ -86,6 +86,7 @@ type FacilityItem = { id: string; number: string; title: string; eyebrow: string
 type CustomBlock = { id: string; title: string; text: string; image: string };
 type CustomPage = { id: string; slug: string; title: string; eyebrow: string; text: string; body: string; image: string; published: boolean };
 const reservedSlugs = new Set(["club", "anlage", "teams", "turniere", "news", "mitglied-werden", "service", "kontakt", "galerie", "partner", "spielpartner", "impressum", "booking", "turnier-anmeldung", "datenschutz", ""]);
+type FormSettings = { contactFormEnabled: boolean; partnerFormEnabled: boolean; pausedMessage: string };
 type ClubSettings = {
   openingHours: string;
   tennisBookingUrl: string;
@@ -224,6 +225,7 @@ type AdminEditor =
   | "navigation"
   | "mediaLibrary"
   | "pages"
+  | "forms"
   | "focus"
   | "assistant"
   | "booking"
@@ -1196,6 +1198,27 @@ function CustomPageManager({
   </div>;
 }
 
+function FormsManager({
+  open, close, settings, save,
+}: {
+  open: boolean; close: () => void; settings: FormSettings;
+  save: (event: FormEvent<HTMLFormElement>) => void;
+}) {
+  if (!open) return null;
+  return <div className="editor-overlay content-manager" role="dialog" aria-modal="true" aria-label="Formulare verwalten">
+    <button className="admin-close" onClick={close} aria-label="Formularverwaltung schließen"><X size={23} /></button>
+    <div className="content-manager-card">
+      <header><div><p className="eyebrow"><span /> Formulare</p><h2>Anfragen<br /><em>steuern.</em></h2><p>Die Kontakt- und Partneranfrage können bei Bedarf pausiert werden — Besucher sehen dann statt des Formulars einen Hinweistext mit Mail-Adresse. Turnier-Anmeldungen steuerst du direkt beim jeweiligen Turnier.</p></div></header>
+      <form key={`${settings.contactFormEnabled}-${settings.partnerFormEnabled}`} onSubmit={save}>
+        <label className="nav-toggle"><input type="checkbox" name="contactFormEnabled" defaultChecked={settings.contactFormEnabled} /> Kontaktformular (Seite „Kontakt") ist geöffnet</label>
+        <label className="nav-toggle"><input type="checkbox" name="partnerFormEnabled" defaultChecked={settings.partnerFormEnabled} /> Partneranfrage-Formular (Seite „Partner") ist geöffnet</label>
+        <label>Hinweistext bei pausiertem Formular<textarea name="pausedMessage" rows={2} defaultValue={settings.pausedMessage} /></label>
+        <button className="button button-light" type="submit">Speichern <Check size={17} /></button>
+      </form>
+    </div>
+  </div>;
+}
+
 function SiteImageManager({
   open,
   close,
@@ -1725,6 +1748,11 @@ function App() {
     siteDescription: "Tennisclub Trier 1888 e.V. – Tennis, Padel und Gemeinschaft am Moselstadion.",
     faviconUrl: "",
   });
+  const [liveFormSettings, setLiveFormSettings] = useState<FormSettings>({
+    contactFormEnabled: true,
+    partnerFormEnabled: true,
+    pausedMessage: "Dieses Formular ist gerade pausiert. Schreib uns gerne direkt per E-Mail.",
+  });
 
   const navigate = (path: string) => {
     const url = new URL(path, window.location.origin);
@@ -2168,6 +2196,22 @@ function App() {
         setLiveClub((previous) => ({ ...previous, ...settings }));
     };
     void loadClubSettings();
+  }, []);
+
+  useEffect(() => {
+    const client = supabase;
+    if (!client) return;
+    const loadFormSettings = async () => {
+      const { data } = await client
+        .from("club_content")
+        .select("value")
+        .eq("key", "form_settings")
+        .maybeSingle();
+      const settings = data?.value?.settings;
+      if (settings && typeof settings === "object")
+        setLiveFormSettings((previous) => ({ ...previous, ...settings }));
+    };
+    void loadFormSettings();
   }, []);
 
   useEffect(() => {
@@ -3651,6 +3695,28 @@ function App() {
     setAdminEditor(null);
   };
 
+  const saveFormSettings = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    if (!supabase || !adminUserId) return;
+    const form = new FormData(event.currentTarget);
+    const settings: FormSettings = {
+      contactFormEnabled: form.get("contactFormEnabled") === "on",
+      partnerFormEnabled: form.get("partnerFormEnabled") === "on",
+      pausedMessage: String(form.get("pausedMessage") ?? liveFormSettings.pausedMessage) || liveFormSettings.pausedMessage,
+    };
+    const { error } = await supabase.from("club_content").upsert({
+      key: "form_settings",
+      value: { settings },
+      updated_by: adminUserId,
+    });
+    if (error) {
+      setAdminNotice(`Formular-Einstellungen konnten nicht gespeichert werden: ${friendlyDbError(error)}`);
+      return;
+    }
+    setLiveFormSettings(settings);
+    setAdminNotice("Formular-Einstellungen wurden aktualisiert.");
+  };
+
   const uploadFavicon = async (file: File) => {
     if (!supabase || !adminUserId) return;
     let url: string;
@@ -4458,6 +4524,12 @@ function App() {
         addOne={(event) => void addCustomPage(event)}
         remove={(item) => void deleteCustomPage(item)}
         uploadImage={(id, file) => void uploadCustomPageImage(id, file)}
+      />
+      <FormsManager
+        open={adminEditor === "forms" && canManageGeneralContent}
+        close={() => setAdminEditor(null)}
+        settings={liveFormSettings}
+        save={(event) => void saveFormSettings(event)}
       />
       <MediaLibraryManager
         open={adminEditor === "mediaLibrary" && canManageGeneralContent}
@@ -5562,7 +5634,14 @@ function App() {
               </div>
             </div>
             <form className="interest-form" onSubmit={submitInterest}>
-              {formSent ? (
+              {!liveFormSettings.contactFormEnabled ? (
+                <div className="success">
+                  <span>i</span>
+                  <h3>Formular pausiert</h3>
+                  <p>{liveFormSettings.pausedMessage}</p>
+                  <a className="text-link" href={`mailto:${club.email}`}><Mail size={16} /> {club.email}</a>
+                </div>
+              ) : formSent ? (
                 <div className="success">
                   <span>✓</span>
                   <h3><EditableText id="contact.form.successTitle" defaultValue="Danke für dein Interesse." /></h3>
@@ -5719,7 +5798,14 @@ function App() {
           )}
           <div className="container partner-inquiry-wrap" id="partner-anfrage">
             <form className="partner-inquiry-form" onSubmit={submitPartnerInquiry}>
-              {partnerInquirySent ? (
+              {!liveFormSettings.partnerFormEnabled ? (
+                <div className="success">
+                  <span>i</span>
+                  <h3>Formular pausiert</h3>
+                  <p>{liveFormSettings.pausedMessage}</p>
+                  <a className="text-link" href={`mailto:${club.email}`}><Mail size={16} /> {club.email}</a>
+                </div>
+              ) : partnerInquirySent ? (
                 <div className="success">
                   <span>✓</span>
                   <h3><EditableText id="partnerForm.successTitle" defaultValue="Danke für dein Interesse." /></h3>
@@ -6524,6 +6610,11 @@ function App() {
                 <ImagePlus size={18} /> Mediathek
               </a>
             )}
+            {canManageGeneralContent && (
+              <a onClick={() => setAdminEditor("forms")}>
+                <FileText size={18} /> Formulare
+              </a>
+            )}
             {canManageInbox && (
               <a onClick={() => setAdminEditor("inbox")}>
                 <Mail size={18} /> Postfach
@@ -6722,6 +6813,13 @@ function App() {
                 <button className="admin-task" onClick={() => setAdminEditor("navigation")}>
                   <Menu size={19} />
                   <span><b>Navigation verwalten</b><small>Menüpunkte anordnen, umbenennen, verstecken</small></span>
+                  <ArrowRight size={18} />
+                </button>
+              )}
+              {canManageGeneralContent && (
+                <button className="admin-task" onClick={() => setAdminEditor("forms")}>
+                  <FileText size={19} />
+                  <span><b>Formulare</b><small>Kontakt- und Partneranfrage öffnen oder pausieren</small></span>
                   <ArrowRight size={18} />
                 </button>
               )}
