@@ -3,7 +3,46 @@ import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
 const corsHeaders = { 'Access-Control-Allow-Origin': '*', 'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type' }
 const ownerEmail = 'elfinko008@icloud.com'
 type Role = 'management' | 'programmer' | 'admin' | 'editor' | 'content_manager' | 'tournament_manager' | 'team_manager'
-type Proposal = { action: 'create_news' | 'create_event' | 'update_team' | 'create_user' | 'update_theme'; title: string; details: string; payload: Record<string, unknown> }
+type ProposalAction =
+  | 'create_news' | 'update_news'
+  | 'create_event' | 'update_team'
+  | 'create_user' | 'update_theme'
+  | 'update_facility' | 'update_history'
+  | 'update_partner_note' | 'update_club_settings'
+  | 'update_navigation'
+type Proposal = { action: ProposalAction; title: string; details: string; warning?: string | null; payload: Record<string, unknown> }
+
+// --- LLM-Provider-Abstraktion --------------------------------------------
+// Die restliche Funktion kennt keine Provider-Details, nur callChatModel().
+// Ein Wechsel des Anbieters ist über die Supabase-Secrets LLM_PROVIDER,
+// LLM_API_KEY, LLM_BASE_URL und LLM_MODEL möglich, ohne Code hier anzufassen.
+type LlmMessage = { role: 'system' | 'user'; content: string }
+const callChatModel = async (messages: LlmMessage[]): Promise<string> => {
+  const provider = (Deno.env.get('LLM_PROVIDER') ?? 'groq').toLowerCase()
+  if (provider === 'groq') {
+    const apiKey = Deno.env.get('GROQ_API_KEY')
+    if (!apiKey) throw new Error('GROQ_API_KEY ist noch nicht als Supabase Secret gesetzt.')
+    const response = await fetch('https://api.groq.com/openai/v1/chat/completions', {
+      method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${apiKey}` },
+      body: JSON.stringify({ model: Deno.env.get('GROQ_MODEL') ?? 'llama-3.3-70b-versatile', temperature: 0.2, response_format: { type: 'json_object' }, messages }),
+    })
+    if (!response.ok) throw new Error(`Groq konnte die Anfrage nicht verarbeiten (${response.status}).`)
+    const data = await response.json()
+    return data.choices?.[0]?.message?.content ?? '{}'
+  }
+  // Generischer OpenAI-kompatibler Anbieter (z. B. OpenAI, Together, Fireworks, ein eigener Endpunkt).
+  const apiKey = Deno.env.get('LLM_API_KEY')
+  const baseUrl = Deno.env.get('LLM_BASE_URL')
+  const model = Deno.env.get('LLM_MODEL')
+  if (!apiKey || !baseUrl || !model) throw new Error(`Für LLM_PROVIDER=${provider} müssen die Supabase-Secrets LLM_API_KEY, LLM_BASE_URL und LLM_MODEL gesetzt sein.`)
+  const response = await fetch(`${baseUrl.replace(/\/$/, '')}/chat/completions`, {
+    method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${apiKey}` },
+    body: JSON.stringify({ model, temperature: 0.2, response_format: { type: 'json_object' }, messages }),
+  })
+  if (!response.ok) throw new Error(`Die KI (${provider}) konnte die Anfrage nicht verarbeiten (${response.status}).`)
+  const data = await response.json()
+  return data.choices?.[0]?.message?.content ?? '{}'
+}
 type SiteTheme = {
   headingFont: 'dm-serif' | 'playfair' | 'cormorant' | 'libre-baskerville'
   bodyFont: 'manrope' | 'inter' | 'montserrat' | 'source-sans'
@@ -33,11 +72,11 @@ const normalizedTheme = (value: unknown, current: SiteTheme = defaultSiteTheme):
 }
 
 const allowedActions: Record<Role, Proposal['action'][]> = {
-  management: ['create_news', 'create_event', 'update_team', 'create_user'],
+  management: ['create_news', 'update_news', 'create_event', 'update_team', 'create_user', 'update_facility', 'update_history', 'update_partner_note', 'update_club_settings', 'update_navigation'],
   programmer: ['update_theme'],
-  admin: ['create_news', 'create_event', 'update_team'],
-  editor: ['create_news', 'create_event', 'update_team'],
-  content_manager: ['create_news'],
+  admin: ['create_news', 'update_news', 'create_event', 'update_team', 'update_facility', 'update_history', 'update_partner_note', 'update_club_settings', 'update_navigation'],
+  editor: ['create_news', 'update_news', 'create_event', 'update_team', 'update_facility', 'update_history', 'update_partner_note'],
+  content_manager: ['create_news', 'update_news'],
   tournament_manager: ['create_event'],
   team_manager: ['update_team'],
 }
@@ -99,7 +138,7 @@ TCT-WEBSITE-WISSEN:
 - Kontaktanfragen landen im Admin-Postfach und können als gelesen oder archiviert markiert werden.
 - Benutzer: Beim Anlegen genügen Name, Startpasswort, Rolle und entweder E-Mail oder Benutzername. Ohne E-Mail wird ein technisches internes Login angelegt; die Person meldet sich zunächst über den Benutzernamen an und kann später selbst eine E-Mail hinterlegen. Ein fehlender Benutzername wird aus dem Namen als v.nachname erzeugt.
 - Rollen: Management verwaltet alles einschließlich Benutzer. Admin und Editor verwalten redaktionelle Inhalte. Content-Manager verwalten News und allgemeine Inhalte. Turnierleitung verwaltet Termine und Turniere. Mannschaftsführung verwaltet Mannschaftsinhalte. Ausschließlich die Rolle Programmer darf das Website-Design über die KI ändern; diese Rolle erhält dadurch keine Benutzerverwaltung. Jede Aktion muss zur Rolle passen.
-- Sicherheit: Änderungen durch KI werden niemals direkt ausgeführt. Bei News, Terminen, Mannschaften und Benutzern gibt es erst einen Vorschlag und dann eine ausdrückliche Bestätigung. Das Änderungslog dokumentiert redaktionelle Änderungen.
+- Sicherheit: Änderungen durch KI werden niemals direkt ausgeführt. Für jede Aktion (News, Termine, Mannschaften, Anlage-Bereiche, Chronik, Partnerhinweise, Menüpunkte, Website-Einstellungen, Benutzer, Design) gibt es erst einen Vorschlag mit Zusammenfassung und dann eine ausdrückliche Bestätigung; wird dabei bestehender Inhalt ersetzt, erscheint zusätzlich ein Warnhinweis. Löschen kann die KI nie. Das Änderungslog dokumentiert redaktionelle Änderungen.
 - Datenschutz: Supabase wird für Anmeldung, Daten und Dateien verwendet. Die KI darf keine Zugangsdaten, API-Schlüssel oder sensiblen Mitgliederdaten anfordern oder verarbeiten.
 `
 
@@ -119,24 +158,32 @@ Deno.serve(async (request) => {
     if (body.mode === 'chat') {
       const prompt = typeof body.prompt === 'string' ? body.prompt.trim().slice(0, 4000) : ''
       if (!prompt) return Response.json({ error: 'Bitte schreibe eine Aufgabe.' }, { headers: corsHeaders })
-      const apiKey = Deno.env.get('GROQ_API_KEY')
-      if (!apiKey) return Response.json({ error: 'GROQ_API_KEY ist noch nicht als Supabase Secret gesetzt.' }, { headers: corsHeaders })
       const allowed = allowedActions[role]
-      const [{ data: currentEvents }, { data: currentNews }, { data: themeRow }] = await Promise.all([
+      const [{ data: currentEvents }, { data: currentNews }, { data: themeRow }, { data: facilitiesRow }, { data: historyRow }, { data: partnersRow }, { data: navRow }, { data: clubSettingsRow }] = await Promise.all([
         admin.from('events').select('title,category,starts_at,ends_at').eq('status', 'published').order('starts_at', { ascending: true }).limit(12),
-        admin.from('news').select('title,published_at').eq('status', 'published').order('published_at', { ascending: false }).limit(8),
+        admin.from('news').select('title,excerpt,published_at').eq('status', 'published').order('published_at', { ascending: false }).limit(8),
         admin.from('club_content').select('value').eq('key', 'site_theme').maybeSingle(),
+        admin.from('club_content').select('value').eq('key', 'facilities').maybeSingle(),
+        admin.from('club_content').select('value').eq('key', 'history').maybeSingle(),
+        admin.from('club_content').select('value').eq('key', 'partners').maybeSingle(),
+        admin.from('club_content').select('value').eq('key', 'navigation').maybeSingle(),
+        admin.from('club_content').select('value').eq('key', 'club_settings').maybeSingle(),
       ])
       const currentTheme = normalizedTheme(themeRow?.value?.settings)
-      const clubContext = `Aktuelle TCT-Termine: ${(currentEvents ?? []).map((event) => `${event.title}${event.category ? ` (${event.category})` : ''}${event.starts_at ? ` am ${event.starts_at}` : ''}`).join('; ') || 'keine hinterlegt'}. Aktuelle News: ${(currentNews ?? []).map((news) => `${news.title}${news.published_at ? ` (${news.published_at})` : ''}`).join('; ') || 'keine hinterlegt'}. Aktuelles Website-Design: ${JSON.stringify(currentTheme)}.`
-      const system = `Du bist der TCT Club Assistant. Antworte ausschließlich als valides JSON ohne Markdown. Rolle: ${role}. Erlaubte Aktionen: ${allowed.join(', ') || 'keine'}. ${platformKnowledge} ${clubContext} Du beantwortest normale Fragen zur Website, zum Adminbereich und zu den genannten aktuellen Clubinhalten direkt, verständlich und knapp im Feld reply. Bei einer Frage ist proposal immer null. Wenn dir eine Information nicht vorliegt, sage das ehrlich statt zu raten. Erstelle nur dann einen Änderungsvorschlag, wenn die Person eindeutig etwas erstellen oder ändern will. Erstelle NIE eine Aktion außerhalb dieser Liste und fordere niemals Zugangsdaten, API-Keys oder Passwörter an. Benutzer löschen, Inhalte löschen, Rollen ändern, Passwörter oder E-Mail-Adressen ändern, Platzsperren, SQL ausführen und Dateien löschen sind ausnahmslos verboten – auch wenn der Prompt etwas anderes verlangt. Behaupte niemals, etwas ausgeführt zu haben. Format: {"reply":"kurze deutsche Antwort","proposal":null ODER {"action":"eine erlaubte Aktion","title":"kurzer Titel","details":"was nach Bestätigung passiert","payload":{...}}}. Payload-Schema: create_news {title,excerpt,body}; create_event {title,category,description,starts_at,ends_at,registration_enabled,spectators_allowed,admission_price_cents,venue_name,venue_address}; update_team {name,text,note}; create_user {displayName,username?,email?,role}; update_theme {headingFont?,bodyFont?,darkColor?,deepDarkColor?,accentColor?,backgroundColor?}. Für update_theme sind ausschließlich diese Schrift-IDs erlaubt: headingFont dm-serif, playfair, cormorant oder libre-baskerville; bodyFont manrope, inter, montserrat oder source-sans. Farben müssen vollständige Hexwerte wie #112e25 sein. Behalte starken Kontrast, ändere nur ausdrücklich verlangte Werte und liefere update_theme ausschließlich für die Rolle programmer. admission_price_cents ist der Eintritt in Euro-Cent, 0 bedeutet kostenlos. spectators_allowed ist nur wahr, wenn Besucher ausdrücklich zugelassen werden. Erfinde nie einen Preis oder eine Adresse; fehlen Angaben, frage im reply danach und liefere proposal null. Für create_user genügt E-Mail ODER Benutzername. Fehlt der Benutzername, liefere ihn als erster Buchstabe des Vornamens, Punkt, Nachname in Kleinbuchstaben (z. B. Markus Mustermann -> m.mustermann). Fehlt die E-Mail, lasse email leer. Für create_user kein Passwort erzeugen oder verlangen; das wird erst lokal in der Bestätigung eingegeben.`
-      const groqResponse = await fetch('https://api.groq.com/openai/v1/chat/completions', {
-        method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${apiKey}` },
-        body: JSON.stringify({ model: 'llama-3.3-70b-versatile', temperature: 0.2, response_format: { type: 'json_object' }, messages: [{ role: 'system', content: system }, { role: 'user', content: prompt }] }),
-      })
-      if (!groqResponse.ok) return Response.json({ error: `Groq konnte die Anfrage nicht verarbeiten (${groqResponse.status}).` }, { headers: corsHeaders })
-      const groq = await groqResponse.json()
-      const result = json(groq.choices?.[0]?.message?.content ?? '{}') as { reply?: string; proposal?: Proposal | null }
+      const facilityTitles = (Array.isArray(facilitiesRow?.value?.items) ? facilitiesRow.value.items : []).map((item: { title?: string; text?: string }) => `${item.title} (Text: "${item.text ?? ''}")`).join('; ') || 'keine hinterlegt'
+      const historyEntries = (Array.isArray(historyRow?.value?.items) ? historyRow.value.items : []).map((item: { year?: string; title?: string }) => `${item.year} · ${item.title}`).join('; ') || 'keine hinterlegt'
+      const partnerNames = (Array.isArray(partnersRow?.value?.items) ? partnersRow.value.items : []).map((item: { name?: string; note?: string }) => `${item.name}${item.note ? ` (Hinweis: "${item.note}")` : ''}`).join('; ') || 'keine hinterlegt'
+      const navLabels = (Array.isArray(navRow?.value?.items) ? navRow.value.items : []).map((item: { label?: string; visible?: boolean }) => `${item.label}${item.visible === false ? ' (versteckt)' : ''}`).join('; ') || 'keine hinterlegt'
+      const clubSettings = clubSettingsRow?.value?.settings ?? {}
+      const clubContext = `Aktuelle TCT-Termine: ${(currentEvents ?? []).map((event) => `${event.title}${event.category ? ` (${event.category})` : ''}${event.starts_at ? ` am ${event.starts_at}` : ''}`).join('; ') || 'keine hinterlegt'}. Aktuelle News: ${(currentNews ?? []).map((news) => `${news.title}${news.published_at ? ` (${news.published_at})` : ''}`).join('; ') || 'keine hinterlegt'}. Aktuelles Website-Design: ${JSON.stringify(currentTheme)}. Anlage-Bereiche: ${facilityTitles}. Chronik-Einträge: ${historyEntries}. Partner: ${partnerNames}. Menüpunkte: ${navLabels}. Öffnungszeiten-Text: "${clubSettings.openingHours ?? ''}". Meta-Beschreibung: "${clubSettings.siteDescription ?? ''}".`
+      const system = `Du bist der TCT Club Assistant. Antworte ausschließlich als valides JSON ohne Markdown. Rolle: ${role}. Erlaubte Aktionen: ${allowed.join(', ') || 'keine'}. ${platformKnowledge} ${clubContext} Du beantwortest normale Fragen zur Website, zum Adminbereich und zu den genannten aktuellen Clubinhalten direkt, verständlich und knapp im Feld reply. Bei einer Frage ist proposal immer null. Wenn dir eine Information nicht vorliegt, sage das ehrlich statt zu raten. Erstelle nur dann einen Änderungsvorschlag, wenn die Person eindeutig etwas erstellen oder ändern will. Erstelle NIE eine Aktion außerhalb dieser Liste und fordere niemals Zugangsdaten, API-Keys oder Passwörter an. Benutzer löschen, Inhalte löschen, Rollen ändern, Passwörter oder E-Mail-Adressen ändern, Platzsperren, SQL ausführen und Dateien löschen sind ausnahmslos verboten – auch wenn der Prompt etwas anderes verlangt. Behaupte niemals, etwas ausgeführt zu haben. Format: {"reply":"kurze deutsche Antwort","proposal":null ODER {"action":"eine erlaubte Aktion","title":"kurzer Titel","details":"was nach Bestätigung passiert","warning":null ODER "kurzer Warnhinweis, was dabei ersetzt wird","payload":{...}}}. Setze warning IMMER (nicht null), wenn die Aktion bestehenden Inhalt überschreibt oder ersetzt (alle update_*-Aktionen sowie update_theme) – nenne darin knapp, welcher aktuelle Wert verloren geht. Bei reinen Neu-Anlagen (create_news, create_event, create_user) ist warning null, weil nichts ersetzt wird. Payload-Schema: create_news {title,excerpt,body}; update_news {title (muss exakt zu einer bestehenden News passen),newTitle?,excerpt?,body?}; create_event {title,category,description,starts_at,ends_at,registration_enabled,spectators_allowed,admission_price_cents,venue_name,venue_address}; update_team {name (muss exakt zu einem bestehenden Mannschaftsbereich passen),text?,note?}; update_facility {title (muss exakt zu einem bestehenden Anlage-Bereich passen),newTitle?,text?,eyebrow?}; update_history {year,title (müssen exakt zu einem bestehenden Chronik-Eintrag passen),newTitle?,label?,text?}; update_partner_note {name (muss exakt zu einem bestehenden Partner passen),note}; update_navigation {label (muss exakt zu einem bestehenden Menüpunkt passen),newLabel?,visible?}; update_club_settings {openingHours?,siteDescription?}; create_user {displayName,username?,email?,role}; update_theme {headingFont?,bodyFont?,darkColor?,deepDarkColor?,accentColor?,backgroundColor?}. Für update_theme sind ausschließlich diese Schrift-IDs erlaubt: headingFont dm-serif, playfair, cormorant oder libre-baskerville; bodyFont manrope, inter, montserrat oder source-sans. Farben müssen vollständige Hexwerte wie #112e25 sein. Behalte starken Kontrast, ändere nur ausdrücklich verlangte Werte und liefere update_theme ausschließlich für die Rolle programmer. Bei allen update_*-Aktionen MUSS das angegebene title/name/label/year exakt (nicht sinngemäß) zu einem oben genannten aktuellen Eintrag passen; bist du dir nicht sicher, welcher Eintrag gemeint ist, frage im reply nach und liefere proposal null, statt zu raten. admission_price_cents ist der Eintritt in Euro-Cent, 0 bedeutet kostenlos. spectators_allowed ist nur wahr, wenn Besucher ausdrücklich zugelassen werden. Erfinde nie einen Preis oder eine Adresse; fehlen Angaben, frage im reply danach und liefere proposal null. Für create_user genügt E-Mail ODER Benutzername. Fehlt der Benutzername, liefere ihn als erster Buchstabe des Vornamens, Punkt, Nachname in Kleinbuchstaben (z. B. Markus Mustermann -> m.mustermann). Fehlt die E-Mail, lasse email leer. Für create_user kein Passwort erzeugen oder verlangen; das wird erst lokal in der Bestätigung eingegeben.`
+      let content: string
+      try {
+        content = await callChatModel([{ role: 'system', content: system }, { role: 'user', content: prompt }])
+      } catch (error) {
+        return Response.json({ error: error instanceof Error ? error.message : 'Die KI konnte die Anfrage nicht verarbeiten.' }, { headers: corsHeaders })
+      }
+      const result = json(content) as { reply?: string; proposal?: Proposal | null }
       if (result.proposal && !isAllowedAction(role, result.proposal.action)) result.proposal = null
       return Response.json({ reply: result.reply ?? 'Ich kann dazu einen Vorschlag erstellen.', proposal: result.proposal ?? null }, { headers: corsHeaders })
     }
@@ -177,6 +224,65 @@ Deno.serve(async (request) => {
         const items = currentItems.map((team: Record<string, unknown>) => team.name === name ? { ...team, text: String(payload.text ?? team.text ?? ''), note: String(payload.note ?? team.note ?? '') } : team)
         const { error } = await userClient.from('club_content').upsert({ key: 'teams', value: { items }, updated_by: user.id })
         return Response.json(readError || error ? { error: readError?.message ?? error?.message } : { ok: true, message: 'Mannschaftsbereich wurde aktualisiert.' }, { headers: corsHeaders })
+      }
+      if (proposal.action === 'update_news') {
+        const title = String(payload.title ?? '').trim()
+        const { data: existing, error: findError } = await admin.from('news').select('id').ilike('title', title).maybeSingle()
+        if (findError || !existing) return Response.json({ error: 'Diese News wurde nicht gefunden.' }, { headers: corsHeaders })
+        const update: Record<string, unknown> = {}
+        if (typeof payload.newTitle === 'string' && payload.newTitle.trim()) update.title = payload.newTitle.trim()
+        if (typeof payload.excerpt === 'string') update.excerpt = payload.excerpt || null
+        if (typeof payload.body === 'string') update.body = payload.body || null
+        if (!Object.keys(update).length) return Response.json({ error: 'Es wurde keine Änderung angegeben.' }, { headers: corsHeaders })
+        const { error } = await userClient.from('news').update(update).eq('id', existing.id)
+        return Response.json(error ? { error: error.message } : { ok: true, message: 'News wurde aktualisiert.' }, { headers: corsHeaders })
+      }
+      if (proposal.action === 'update_facility') {
+        const { data: current, error: readError } = await admin.from('club_content').select('value').eq('key', 'facilities').maybeSingle()
+        const currentItems = Array.isArray(current?.value?.items) ? current.value.items : []
+        const title = String(payload.title ?? '')
+        if (!currentItems.some((item: { title?: string }) => item.title === title)) return Response.json({ error: 'Dieser Anlage-Bereich wurde nicht gefunden.' }, { headers: corsHeaders })
+        const items = currentItems.map((item: Record<string, unknown>) => item.title === title ? { ...item, title: typeof payload.newTitle === 'string' && payload.newTitle.trim() ? payload.newTitle.trim() : item.title, text: typeof payload.text === 'string' ? payload.text : item.text, eyebrow: typeof payload.eyebrow === 'string' ? payload.eyebrow : item.eyebrow } : item)
+        const { error } = await userClient.from('club_content').upsert({ key: 'facilities', value: { items }, updated_by: user.id })
+        return Response.json(readError || error ? { error: readError?.message ?? error?.message } : { ok: true, message: 'Anlage-Bereich wurde aktualisiert.' }, { headers: corsHeaders })
+      }
+      if (proposal.action === 'update_history') {
+        const { data: current, error: readError } = await admin.from('club_content').select('value').eq('key', 'history').maybeSingle()
+        const currentItems = Array.isArray(current?.value?.items) ? current.value.items : []
+        const year = String(payload.year ?? '')
+        const title = String(payload.title ?? '')
+        if (!currentItems.some((item: { year?: string; title?: string }) => item.year === year && item.title === title)) return Response.json({ error: 'Dieser Chronik-Eintrag wurde nicht gefunden.' }, { headers: corsHeaders })
+        const items = currentItems.map((item: Record<string, unknown>) => item.year === year && item.title === title ? { ...item, title: typeof payload.newTitle === 'string' && payload.newTitle.trim() ? payload.newTitle.trim() : item.title, label: typeof payload.label === 'string' ? payload.label : item.label, text: typeof payload.text === 'string' ? payload.text : item.text } : item)
+        const { error } = await userClient.from('club_content').upsert({ key: 'history', value: { items }, updated_by: user.id })
+        return Response.json(readError || error ? { error: readError?.message ?? error?.message } : { ok: true, message: 'Chronik-Eintrag wurde aktualisiert.' }, { headers: corsHeaders })
+      }
+      if (proposal.action === 'update_partner_note') {
+        const { data: current, error: readError } = await admin.from('club_content').select('value').eq('key', 'partners').maybeSingle()
+        const currentItems = Array.isArray(current?.value?.items) ? current.value.items : []
+        const name = String(payload.name ?? '')
+        if (!currentItems.some((item: { name?: string }) => item.name === name)) return Response.json({ error: 'Dieser Partner wurde nicht gefunden.' }, { headers: corsHeaders })
+        const items = currentItems.map((item: Record<string, unknown>) => item.name === name ? { ...item, note: String(payload.note ?? '') } : item)
+        const { error } = await userClient.from('club_content').upsert({ key: 'partners', value: { items }, updated_by: user.id })
+        return Response.json(readError || error ? { error: readError?.message ?? error?.message } : { ok: true, message: 'Partnerhinweis wurde aktualisiert.' }, { headers: corsHeaders })
+      }
+      if (proposal.action === 'update_navigation') {
+        const { data: current, error: readError } = await admin.from('club_content').select('value').eq('key', 'navigation').maybeSingle()
+        const currentItems = Array.isArray(current?.value?.items) ? current.value.items : []
+        const label = String(payload.label ?? '')
+        if (!currentItems.some((item: { label?: string }) => item.label === label)) return Response.json({ error: 'Dieser Menüpunkt wurde nicht gefunden.' }, { headers: corsHeaders })
+        const items = currentItems.map((item: Record<string, unknown>) => item.label === label ? { ...item, label: typeof payload.newLabel === 'string' && payload.newLabel.trim() ? payload.newLabel.trim() : item.label, visible: typeof payload.visible === 'boolean' ? payload.visible : item.visible } : item)
+        if (!items.some((item: { visible?: boolean }) => item.visible)) return Response.json({ error: 'Mindestens ein Menüpunkt muss sichtbar bleiben.' }, { headers: corsHeaders })
+        const { error } = await userClient.from('club_content').upsert({ key: 'navigation', value: { items }, updated_by: user.id })
+        return Response.json(readError || error ? { error: readError?.message ?? error?.message } : { ok: true, message: 'Navigation wurde aktualisiert.' }, { headers: corsHeaders })
+      }
+      if (proposal.action === 'update_club_settings') {
+        const { data: current, error: readError } = await admin.from('club_content').select('value').eq('key', 'club_settings').maybeSingle()
+        const currentSettings = current?.value?.settings ?? {}
+        const settings = { ...currentSettings }
+        if (typeof payload.openingHours === 'string') settings.openingHours = payload.openingHours
+        if (typeof payload.siteDescription === 'string') settings.siteDescription = payload.siteDescription
+        const { error } = await userClient.from('club_content').upsert({ key: 'club_settings', value: { settings }, updated_by: user.id })
+        return Response.json(readError || error ? { error: readError?.message ?? error?.message } : { ok: true, message: 'Website-Einstellungen wurden aktualisiert.' }, { headers: corsHeaders })
       }
       if (proposal.action === 'update_theme') {
         if (role !== 'programmer') return Response.json({ error: 'Nur die Rolle Programmer darf das Website-Design ändern.' }, { headers: corsHeaders })

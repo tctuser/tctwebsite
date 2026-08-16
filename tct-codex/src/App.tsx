@@ -1,5 +1,6 @@
 import { createContext, lazy, Suspense, useContext, useEffect, useState, type CSSProperties, type FormEvent } from "react";
 import {
+  AlertTriangle,
   ArrowLeft,
   ArrowDownRight,
   ArrowRight,
@@ -262,12 +263,19 @@ type FeaturedContent = {
 type AiProposal = {
   action:
     | "create_news"
+    | "update_news"
     | "create_event"
     | "update_team"
     | "create_user"
-    | "update_theme";
+    | "update_theme"
+    | "update_facility"
+    | "update_history"
+    | "update_partner_note"
+    | "update_club_settings"
+    | "update_navigation";
   title: string;
   details: string;
+  warning?: string | null;
   payload: Record<string, unknown>;
 };
 const OWNER_EMAIL = "elfinko008@icloud.com";
@@ -1570,7 +1578,9 @@ function ClubAssistant({
     if (
       !supabase ||
       !proposal ||
-      !window.confirm(`Wirklich ausführen?\n\n${proposal.details}`)
+      !window.confirm(
+        `Wirklich ausführen?\n\n${proposal.details}${proposal.warning ? `\n\n⚠️ ${proposal.warning}` : ""}`,
+      )
     )
       return;
     if (proposal.action === "create_user" && password.length < 10) {
@@ -1630,7 +1640,7 @@ function ClubAssistant({
       <section>
         <header>
           <p className="eyebrow">
-            <span /> TCT Club Assistant · Groq
+            <span /> TCT Club Assistant
           </p>
           <h2>
             Wie kann ich
@@ -1680,6 +1690,11 @@ function ClubAssistant({
             <h3>{proposal.title}</h3>
             <p>{proposal.details}</p>
             <code>{proposal.action}</code>
+            {proposal.warning && (
+              <p className="ai-proposal-warning">
+                <AlertTriangle size={16} /> {proposal.warning}
+              </p>
+            )}
             {proposal.action === "create_user" && (
               <label>
                 Startpasswort für den neuen Benutzer
