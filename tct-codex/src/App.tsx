@@ -91,6 +91,11 @@ type ClubSettings = {
   tennisBookingUrl: string;
   padelBookingUrl: string;
   schoolUrl: string;
+  instagramUrl: string;
+  facebookUrl: string;
+  siteTitle: string;
+  siteDescription: string;
+  faviconUrl: string;
 };
 type SiteTheme = {
   headingFont: "dm-serif" | "playfair" | "cormorant" | "libre-baskerville";
@@ -1708,6 +1713,18 @@ function App() {
   );
   const [currentSearch, setCurrentSearch] = useState(() => window.location.search);
   const [liveCustomPages, setLiveCustomPages] = useState<CustomPage[]>([]);
+  const [liveClub, setLiveClub] = useState<ClubSettings>({
+    openingHours:
+      "Aktuelle Platz- und Hallenzeiten direkt über die Buchung prüfen.",
+    tennisBookingUrl: club.bookingUrl,
+    padelBookingUrl: club.padelUrl,
+    schoolUrl: club.schoolUrl,
+    instagramUrl: officialLinks.instagram,
+    facebookUrl: officialLinks.facebook,
+    siteTitle: "TCT 1888 — Tennisclub Trier",
+    siteDescription: "Tennisclub Trier 1888 e.V. – Tennis, Padel und Gemeinschaft am Moselstadion.",
+    faviconUrl: "",
+  });
 
   const navigate = (path: string) => {
     const url = new URL(path, window.location.origin);
@@ -1776,9 +1793,8 @@ function App() {
   // Client-Side-Routing (kein Full-Reload mehr) muss das jetzt manuell
   // passieren, sonst zeigt der Browser-Tab auf jeder Seite denselben Titel.
   useEffect(() => {
-    const siteTitle = "TCT 1888 — Tennisclub Trier";
-    const siteDescription =
-      "Tennisclub Trier 1888 e.V. – Tennis, Padel und Gemeinschaft am Moselstadion.";
+    const siteTitle = liveClub.siteTitle;
+    const siteDescription = liveClub.siteDescription;
     let title = siteTitle;
     let description = siteDescription;
     if (pageInfo) {
@@ -1802,7 +1818,13 @@ function App() {
     document
       .querySelector('meta[name="description"]')
       ?.setAttribute("content", description);
-  }, [currentPath, pageInfo, isBookingPage, isTournamentContactPage, isHomePage, isKnownPath, customPage]);
+  }, [currentPath, pageInfo, isBookingPage, isTournamentContactPage, isHomePage, isKnownPath, customPage, liveClub.siteTitle, liveClub.siteDescription]);
+
+  useEffect(() => {
+    if (!liveClub.faviconUrl) return;
+    const link = document.querySelector<HTMLLinkElement>('link[rel="icon"]');
+    if (link) link.href = liveClub.faviconUrl;
+  }, [liveClub.faviconUrl]);
   const selectedTournamentTitle = new URLSearchParams(currentSearch).get("turnier") ?? "Allgemeine Turnieranfrage";
   const registrationAllowed = new URLSearchParams(currentSearch).get("anmeldung") !== "0";
   const [menuOpen, setMenuOpen] = useState(false);
@@ -1881,13 +1903,6 @@ function App() {
       };
     }),
   );
-  const [liveClub, setLiveClub] = useState<ClubSettings>({
-    openingHours:
-      "Aktuelle Platz- und Hallenzeiten direkt über die Buchung prüfen.",
-    tennisBookingUrl: club.bookingUrl,
-    padelBookingUrl: club.padelUrl,
-    schoolUrl: club.schoolUrl,
-  });
   const [liveSiteTheme, setLiveSiteTheme] = useState<SiteTheme>(defaultSiteTheme);
   const [liveSiteImages, setLiveSiteImages] = useState<
     Record<SiteImageKey, string>
@@ -3614,6 +3629,11 @@ function App() {
       tennisBookingUrl: String(form.get("tennisBookingUrl")),
       padelBookingUrl: String(form.get("padelBookingUrl")),
       schoolUrl: String(form.get("schoolUrl")),
+      instagramUrl: String(form.get("instagramUrl") ?? liveClub.instagramUrl),
+      facebookUrl: String(form.get("facebookUrl") ?? liveClub.facebookUrl),
+      siteTitle: String(form.get("siteTitle") ?? liveClub.siteTitle),
+      siteDescription: String(form.get("siteDescription") ?? liveClub.siteDescription),
+      faviconUrl: liveClub.faviconUrl,
     };
     const { error } = await supabase.from("club_content").upsert({
       key: "club_settings",
@@ -3627,8 +3647,20 @@ function App() {
       return;
     }
     setLiveClub(settings);
-    setAdminNotice("Öffnungszeiten und Buchungslinks wurden aktualisiert.");
+    setAdminNotice("Website-Einstellungen wurden aktualisiert.");
     setAdminEditor(null);
+  };
+
+  const uploadFavicon = async (file: File) => {
+    if (!supabase || !adminUserId) return;
+    let url: string;
+    try { url = await uploadClubMediaFile("site-images", file); }
+    catch (error) { setAdminNotice(`Favicon-Upload fehlgeschlagen: ${(error as Error).message}`); return; }
+    const settings: ClubSettings = { ...liveClub, faviconUrl: url };
+    const { error } = await supabase.from("club_content").upsert({ key: "club_settings", value: { settings }, updated_by: adminUserId });
+    if (error) { setAdminNotice(`Favicon konnte nicht gespeichert werden: ${friendlyDbError(error)}`); return; }
+    setLiveClub(settings);
+    setAdminNotice("Favicon wurde aktualisiert.");
   };
 
   const uploadNewsImageFile = async (file: File) => {
@@ -5486,13 +5518,13 @@ function App() {
             </div>
             <nav aria-label="TCT Social Media">
               <a
-                href={officialLinks.instagram}
+                href={liveClub.instagramUrl}
                 target="_blank"
                 rel="noreferrer"
               >
                 Instagram <ArrowRight size={20} />
               </a>
-              <a href={officialLinks.facebook} target="_blank" rel="noreferrer">
+              <a href={liveClub.facebookUrl} target="_blank" rel="noreferrer">
                 Facebook <ArrowRight size={20} />
               </a>
             </nav>
@@ -7718,16 +7750,17 @@ function App() {
           </button>
           <div className="editor-card">
             <p className="eyebrow">
-              <span /> Club Einstellungen
+              <span /> Website-Einstellungen
             </p>
             <h2>
-              Links &amp;
+              Alles an
               <br />
-              <em>Öffnungszeiten.</em>
+              <em>einem Ort.</em>
             </h2>
             <p className="editor-help">
-              Diese Angaben steuern die Buchungsbuttons auf der Website. Nutze
-              vollständige Internetadressen mit https://.
+              Buchungslinks, Social-Media, Suchmaschinen-Anzeige und Favicon
+              der ganzen Website. Nutze vollständige Internetadressen mit
+              https://.
             </p>
             <p className="kicker">AKZENTFARBE (BUTTONS &amp; HIGHLIGHTS)</p>
             <div className="accent-preset-row">
@@ -7785,10 +7818,44 @@ function App() {
                   defaultValue={liveClub.schoolUrl}
                 />
               </label>
+              <fieldset>
+                <p className="kicker">SOCIAL MEDIA</p>
+                <label>
+                  Instagram
+                  <input name="instagramUrl" type="url" defaultValue={liveClub.instagramUrl} />
+                </label>
+                <label>
+                  Facebook
+                  <input name="facebookUrl" type="url" defaultValue={liveClub.facebookUrl} />
+                </label>
+              </fieldset>
+              <fieldset>
+                <p className="kicker">SUCHMASCHINEN-ANZEIGE (STANDARD)</p>
+                <label>
+                  Seitentitel
+                  <input name="siteTitle" defaultValue={liveClub.siteTitle} />
+                </label>
+                <label>
+                  Beschreibung
+                  <textarea name="siteDescription" rows={2} defaultValue={liveClub.siteDescription} />
+                </label>
+              </fieldset>
               <button className="button button-light" type="submit">
                 Einstellungen speichern <Check size={17} />
               </button>
             </form>
+            <fieldset>
+              <p className="kicker">FAVICON (BROWSER-TAB-SYMBOL)</p>
+              {liveClub.faviconUrl && <img className="upload-preview" src={liveClub.faviconUrl} alt="" style={{ width: 48, height: 48, objectFit: "cover" }} />}
+              <label>
+                Neues Favicon hochladen
+                <input
+                  type="file"
+                  accept="image/png,image/jpeg,image/x-icon"
+                  onChange={(event) => { const file = event.target.files?.[0]; if (file) void uploadFavicon(file); }}
+                />
+              </label>
+            </fieldset>
           </div>
         </div>
       )}
