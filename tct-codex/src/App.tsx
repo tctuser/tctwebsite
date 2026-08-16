@@ -7184,7 +7184,7 @@ function App() {
             </section>
           </div>
         )}
-      {adminEditor && (
+      {["news", "media", "membership"].includes(adminEditor ?? "") && (
         <div
           className="editor-overlay"
           role="dialog"
@@ -7352,78 +7352,6 @@ function App() {
                 </form>
               </>
             )}
-            {adminEditor === "event" && (
-              <>
-                <p className="eyebrow">
-                  <span /> Termine
-                </p>
-                <h2>Terminbereich</h2>
-                <p className="editor-help">
-                  Die Datenbank ist vorbereitet. Als nächstes ergänze ich die
-                  vollständige Terminverwaltung mit Entwurf, Veröffentlichung
-                  und Bearbeitung direkt im Dashboard.
-                </p>
-              </>
-            )}
-          </div>
-        </div>
-      )}
-      {adminEditor === "event" && (
-        <div
-          className="editor-overlay event-editor"
-          role="dialog"
-          aria-modal="true"
-          aria-label="Termin anlegen"
-        >
-          <button
-            className="admin-close"
-            onClick={() => setAdminEditor(null)}
-            aria-label="Editor schließen"
-          >
-            <X size={23} />
-          </button>
-          <div className="editor-card">
-            <p className="eyebrow">
-              <span /> Veranstaltungen
-            </p>
-            <h2>Termin anlegen</h2>
-            <form onSubmit={saveEvent}>
-              <label>
-                Titel
-                <input
-                  required
-                  name="title"
-                  placeholder="Name der Veranstaltung"
-                />
-              </label>
-              <label>
-                Kategorie
-                <input
-                  name="category"
-                  placeholder="z. B. Jugend, ITF oder Club"
-                />
-              </label>
-              <label>
-                Beginn
-                <input required name="starts_at" type="datetime-local" />
-              </label>
-              <label>
-                Ende
-                <input name="ends_at" type="datetime-local" />
-              </label>
-              <label className="event-registration-check"><input name="registration_enabled" type="checkbox" /> Anmeldung über die Website erlauben <small>Aus lassen bei Einladungsturnieren wie dem ITF.</small></label>
-              <label>
-                Beschreibung
-                <textarea
-                  name="description"
-                  rows={4}
-                  placeholder="Wichtige Informationen zum Termin"
-                />
-              </label>
-              <button className="button button-light" type="submit">
-                Termin veröffentlichen <CalendarDays size={17} />
-              </button>
-            </form>
           </div>
         </div>
       )}
