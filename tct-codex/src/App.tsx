@@ -84,6 +84,8 @@ type BoardMember = { id: string; name: string; role: string; photo: string };
 type HistoryEvent = { id: string; year: string; title: string; label: string; text: string; image: string };
 type FacilityItem = { id: string; number: string; title: string; eyebrow: string; text: string; action: string; href: string; image: string };
 type CustomBlock = { id: string; title: string; text: string; image: string };
+type CustomPage = { id: string; slug: string; title: string; eyebrow: string; text: string; body: string; image: string; published: boolean };
+const reservedSlugs = new Set(["club", "anlage", "teams", "turniere", "news", "mitglied-werden", "service", "kontakt", "galerie", "partner", "spielpartner", "impressum", "booking", "turnier-anmeldung", "datenschutz", ""]);
 type ClubSettings = {
   openingHours: string;
   tennisBookingUrl: string;
@@ -216,6 +218,7 @@ type AdminEditor =
   | "blocks"
   | "navigation"
   | "mediaLibrary"
+  | "pages"
   | "focus"
   | "assistant"
   | "booking"
@@ -1136,6 +1139,58 @@ function MediaLibraryManager({
   </div>;
 }
 
+function CustomPageManager({
+  open, close, items, saveAll, addOne, remove, uploadImage,
+}: {
+  open: boolean; close: () => void; items: CustomPage[];
+  saveAll: (event: FormEvent<HTMLFormElement>) => void;
+  addOne: (event: FormEvent<HTMLFormElement>) => void;
+  remove: (item: CustomPage) => void;
+  uploadImage: (id: string, file: File) => void;
+}) {
+  if (!open) return null;
+  return <div className="editor-overlay content-manager" role="dialog" aria-modal="true" aria-label="Seiten verwalten">
+    <button className="admin-close" onClick={close} aria-label="Seitenverwaltung schließen"><X size={23} /></button>
+    <div className="content-manager-card">
+      <header><div><p className="eyebrow"><span /> Eigene Seiten</p><h2>Neue<br /><em>Abteile.</em></h2><p>Lege komplett neue Seiten mit eigener Internetadresse an — z. B. für ein Sommerfest oder eine neue Sparte. Eine neue Seite ist erst live, wenn „Veröffentlicht“ angehakt ist. Danach kannst du sie unter Navigation ins Menü aufnehmen.</p></div></header>
+      <div className="content-manager-grid">
+        <form onSubmit={addOne}>
+          <p className="kicker">NEUE SEITE</p>
+          <label>Titel<input required name="newTitle" placeholder="z. B. Sommerfest 2026" /></label>
+          <label>Internetadresse <small>optional – wird sonst aus dem Titel erzeugt, z. B. /sommerfest-2026</small><input name="newSlug" placeholder="sommerfest-2026" /></label>
+          <label>Kicker <small>optional</small><input name="newEyebrow" placeholder="z. B. TCT Vereinsleben" /></label>
+          <label>Kurztext <small>optional</small><textarea name="newText" rows={2} placeholder="Kurze Einleitung unter der Überschrift" /></label>
+          <label>Inhalt <small>optional, ein Absatz pro Zeile</small><textarea name="newBody" rows={5} placeholder="Der eigentliche Seiteninhalt …" /></label>
+          <button className="button button-light" type="submit">Seite anlegen <ArrowRight size={17} /></button>
+        </form>
+        <section className="content-manager-list">
+          <div><p className="kicker">ALLE EIGENEN SEITEN</p></div>
+          {items.length ? (
+            <form onSubmit={saveAll}>
+              {items.map((item, index) => (
+                <article key={item.id} className="content-manager-row">
+                  {item.image ? <img className="partner-admin-logo" src={item.image} alt="" /> : <span className="content-manager-noimage">Kein Bild</span>}
+                  <div>
+                    <p className="page-manager-url">/{item.slug}</p>
+                    <label>Titel<input required name={`title-${index}`} defaultValue={item.title} /></label>
+                    <label>Kicker<input name={`eyebrow-${index}`} defaultValue={item.eyebrow} /></label>
+                    <label>Kurztext<textarea name={`text-${index}`} rows={2} defaultValue={item.text} /></label>
+                    <label>Inhalt <small>ein Absatz pro Zeile</small><textarea name={`body-${index}`} rows={5} defaultValue={item.body} /></label>
+                    <label>Bild<input type="file" accept="image/png,image/jpeg,image/webp" onChange={(event) => { const file = event.target.files?.[0]; if (file) void uploadImage(item.id, file); }} /></label>
+                    <label className="nav-toggle"><input type="checkbox" name={`published-${index}`} defaultChecked={item.published} /> Veröffentlicht</label>
+                    <button className="danger" type="button" onClick={() => remove(item)}>Löschen</button>
+                  </div>
+                </article>
+              ))}
+              <button className="button button-light" type="submit">Änderungen speichern <Check size={17} /></button>
+            </form>
+          ) : <p className="content-manager-empty">Noch keine eigenen Seiten angelegt.</p>}
+        </section>
+      </div>
+    </div>
+  </div>;
+}
+
 function SiteImageManager({
   open,
   close,
@@ -1652,6 +1707,7 @@ function App() {
     window.location.pathname.replace(/\/+$/, ""),
   );
   const [currentSearch, setCurrentSearch] = useState(() => window.location.search);
+  const [liveCustomPages, setLiveCustomPages] = useState<CustomPage[]>([]);
 
   const navigate = (path: string) => {
     const url = new URL(path, window.location.origin);
@@ -1711,6 +1767,9 @@ function App() {
     (page) => currentPath === `/${page}`,
   );
   const pageInfo = sectionPage ? sectionPageInfo[sectionPage] : null;
+  const customPage = liveCustomPages.find(
+    (page) => page.published && currentPath === `/${page.slug}`,
+  );
   const isFocusedPage = !isHomePage;
 
   // Seitentitel & Meta-Description pro Route — seit dem Umstieg auf
@@ -1733,6 +1792,9 @@ function App() {
       description = "Fragen oder Anmeldung zu einem Turnier des Tennisclub Trier.";
     } else if (currentPath === "/datenschutz") {
       title = "Datenschutz — TCT 1888";
+    } else if (customPage) {
+      title = `${customPage.title} — TCT 1888`;
+      description = customPage.text || description;
     } else if (!isHomePage && !isKnownPath) {
       title = "Seite nicht gefunden — TCT 1888";
     }
@@ -1740,7 +1802,7 @@ function App() {
     document
       .querySelector('meta[name="description"]')
       ?.setAttribute("content", description);
-  }, [currentPath, pageInfo, isBookingPage, isTournamentContactPage, isHomePage, isKnownPath]);
+  }, [currentPath, pageInfo, isBookingPage, isTournamentContactPage, isHomePage, isKnownPath, customPage]);
   const selectedTournamentTitle = new URLSearchParams(currentSearch).get("turnier") ?? "Allgemeine Turnieranfrage";
   const registrationAllowed = new URLSearchParams(currentSearch).get("anmeldung") !== "0";
   const [menuOpen, setMenuOpen] = useState(false);
@@ -2054,6 +2116,16 @@ function App() {
       if (Array.isArray(data?.value?.items) && data.value.items.length) setLiveNavItems(data.value.items as NavItem[]);
     };
     void loadNavigation();
+  }, []);
+
+  useEffect(() => {
+    const client = supabase;
+    if (!client) return;
+    const loadCustomPages = async () => {
+      const { data } = await client.from("club_content").select("value").eq("key", "custom_pages").maybeSingle();
+      if (Array.isArray(data?.value?.items)) setLiveCustomPages(data.value.items as CustomPage[]);
+    };
+    void loadCustomPages();
   }, []);
 
   useEffect(() => {
@@ -3917,6 +3989,77 @@ function App() {
     await saveNavItems(items);
   };
 
+  const normalizeSlug = (value: string) => {
+    const stripped = value.trim().toLowerCase().normalize("NFD").split("").filter((ch) => ch.charCodeAt(0) < 0x0300 || ch.charCodeAt(0) > 0x036f).join("");
+    return stripped.replace(/[^a-z0-9-]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 60);
+  };
+
+  const saveCustomPages = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    if (!supabase || !adminUserId) return;
+    const form = new FormData(event.currentTarget);
+    const items = liveCustomPages.map((page, index) => ({
+      ...page,
+      title: String(form.get(`title-${index}`) ?? page.title).trim(),
+      eyebrow: String(form.get(`eyebrow-${index}`) ?? page.eyebrow).trim(),
+      text: String(form.get(`text-${index}`) ?? page.text).trim(),
+      body: String(form.get(`body-${index}`) ?? page.body),
+      published: form.get(`published-${index}`) === "on",
+    }));
+    const { error } = await supabase.from("club_content").upsert({ key: "custom_pages", value: { items }, updated_by: adminUserId });
+    if (error) { setAdminNotice(`Seiten konnten nicht gespeichert werden: ${friendlyDbError(error)}`); return; }
+    setLiveCustomPages(items);
+    setAdminNotice("Seiten aktualisiert.");
+  };
+
+  const addCustomPage = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    if (!supabase || !adminUserId) return;
+    const form = new FormData(event.currentTarget);
+    const title = String(form.get("newTitle") ?? "").trim();
+    const requestedSlug = normalizeSlug(String(form.get("newSlug") ?? "") || title);
+    if (!title || !requestedSlug) { setAdminNotice("Bitte Titel und eine gültige URL angeben."); return; }
+    if (reservedSlugs.has(requestedSlug)) { setAdminNotice(`„/${requestedSlug}“ ist bereits eine feste Seite der Website. Bitte eine andere URL wählen.`); return; }
+    if (liveCustomPages.some((page) => page.slug === requestedSlug)) { setAdminNotice(`„/${requestedSlug}“ gibt es schon. Bitte eine andere URL wählen.`); return; }
+    const page: CustomPage = {
+      id: crypto.randomUUID(),
+      slug: requestedSlug,
+      title,
+      eyebrow: String(form.get("newEyebrow") ?? "").trim(),
+      text: String(form.get("newText") ?? "").trim(),
+      body: String(form.get("newBody") ?? "").trim(),
+      image: "",
+      published: false,
+    };
+    const items = [...liveCustomPages, page];
+    const { error } = await supabase.from("club_content").upsert({ key: "custom_pages", value: { items }, updated_by: adminUserId });
+    if (error) { setAdminNotice(`Seite konnte nicht angelegt werden: ${friendlyDbError(error)}`); return; }
+    setLiveCustomPages(items);
+    event.currentTarget.reset();
+    setAdminNotice(`„${title}“ wurde als Entwurf angelegt. Unter /${requestedSlug} sichtbar, sobald „Veröffentlicht“ angehakt ist. Füge sie danach bei Bedarf zur Navigation hinzu.`);
+  };
+
+  const uploadCustomPageImage = async (id: string, file: File) => {
+    if (!supabase || !adminUserId) return;
+    let url: string;
+    try { url = await uploadClubMediaFile("pages", file); }
+    catch (error) { setAdminNotice(`Bild-Upload fehlgeschlagen: ${(error as Error).message}`); return; }
+    const items = liveCustomPages.map((page) => (page.id === id ? { ...page, image: url } : page));
+    const { error } = await supabase.from("club_content").upsert({ key: "custom_pages", value: { items }, updated_by: adminUserId });
+    if (error) { setAdminNotice(`Bild konnte nicht gespeichert werden: ${friendlyDbError(error)}`); return; }
+    setLiveCustomPages(items);
+  };
+
+  const deleteCustomPage = async (page: CustomPage) => {
+    if (!supabase || !adminUserId || !window.confirm(`„${page.title}“ (/${page.slug}) wirklich löschen? Menüpunkte, die darauf zeigen, führen danach ins Leere.`)) return;
+    const items = liveCustomPages.filter((entry) => entry.id !== page.id);
+    const { error } = await supabase.from("club_content").upsert({ key: "custom_pages", value: { items }, updated_by: adminUserId });
+    if (error) { setAdminNotice(`Konnte nicht gelöscht werden: ${friendlyDbError(error)}`); return; }
+    if (page.image) await removeClubMediaFile(page.image);
+    setLiveCustomPages(items);
+    setAdminNotice(`„${page.title}“ wurde gelöscht.`);
+  };
+
   const saveCustomBlocks = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     if (!supabase || !adminUserId) return;
@@ -4173,7 +4316,7 @@ function App() {
     setAdminNotice("Das Website-Design entspricht wieder vollständig dem TCT-Standard.");
   };
 
-  if (!isKnownPath) {
+  if (!isKnownPath && !customPage) {
     return (
       <main className="not-found-page">
         <div className="container">
@@ -4200,7 +4343,7 @@ function App() {
 
   return (
     <SiteCopyContext.Provider value={{ copy: liveCopy, editMode, save: saveCopyField }}>
-    <main className={`${isBookingPage ? "booking-page" : isTournamentContactPage ? "tournament-contact-page" : ""} ${sectionPage ? "section-page" : ""}`}>
+    <main className={`${isBookingPage ? "booking-page" : isTournamentContactPage ? "tournament-contact-page" : ""} ${sectionPage || customPage ? "section-page" : ""}`}>
       <NewsManager
         open={adminEditor === "news"}
         close={() => setAdminEditor(null)}
@@ -4274,6 +4417,15 @@ function App() {
         toggleField={toggleNavField}
         addOne={(event) => void addNavItem(event)}
         remove={(item) => void deleteNavItem(item)}
+      />
+      <CustomPageManager
+        open={adminEditor === "pages" && canManageGeneralContent}
+        close={() => setAdminEditor(null)}
+        items={liveCustomPages}
+        saveAll={(event) => void saveCustomPages(event)}
+        addOne={(event) => void addCustomPage(event)}
+        remove={(item) => void deleteCustomPage(item)}
+        uploadImage={(id, file) => void uploadCustomPageImage(id, file)}
       />
       <MediaLibraryManager
         open={adminEditor === "mediaLibrary" && canManageGeneralContent}
@@ -4415,6 +4567,15 @@ function App() {
           </div>
         </section>
       )}
+      {customPage && (
+        <section className="section-page-hero" aria-labelledby="section-page-title">
+          <div className="container">
+            <p className="eyebrow"><span /> {customPage.eyebrow}</p>
+            <h1 id="section-page-title">{customPage.title}</h1>
+            <p>{customPage.text}</p>
+          </div>
+        </section>
+      )}
 
       <section className="hero" id="top" aria-labelledby="hero-title">
         <img
@@ -4495,7 +4656,17 @@ function App() {
         </div>
       </section>
 
-      <div id="content" className={`content-route ${isHomePage ? "route-home" : sectionPage ? `route-${sectionPage}` : ""}`}>
+      <div id="content" className={`content-route ${isHomePage ? "route-home" : sectionPage ? `route-${sectionPage}` : customPage ? "route-custom-page" : ""}`}>
+        {customPage && (
+          <section className="section custom-page-section route-custom-page" id="custom-page">
+            <div className="container custom-page-body">
+              {customPage.image && <img className="custom-page-image" src={customPage.image} alt={customPage.title} />}
+              {customPage.body && customPage.body.split("\n").filter(Boolean).map((paragraph, index) => (
+                <p key={index}>{paragraph}</p>
+              ))}
+            </div>
+          </section>
+        )}
         <section className="section current route-home" id="aktuell">
           <div className="container">
             <div className="section-head">
@@ -6307,6 +6478,11 @@ function App() {
               </a>
             )}
             {canManageGeneralContent && (
+              <a onClick={() => setAdminEditor("pages")}>
+                <LayoutDashboard size={18} /> Eigene Seiten
+              </a>
+            )}
+            {canManageGeneralContent && (
               <a onClick={() => setAdminEditor("navigation")}>
                 <Menu size={18} /> Navigation
               </a>
@@ -6500,6 +6676,13 @@ function App() {
                 <button className="admin-task" onClick={() => setAdminEditor("blocks")}>
                   <ImagePlus size={19} />
                   <span><b>Zusatzblöcke verwalten</b><small>Eigene Absätze mit Bild hinzufügen</small></span>
+                  <ArrowRight size={18} />
+                </button>
+              )}
+              {canManageGeneralContent && (
+                <button className="admin-task" onClick={() => setAdminEditor("pages")}>
+                  <LayoutDashboard size={19} />
+                  <span><b>Eigene Seiten</b><small>Neue Abteile mit eigener Adresse anlegen oder entfernen</small></span>
                   <ArrowRight size={18} />
                 </button>
               )}
