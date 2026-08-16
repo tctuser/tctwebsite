@@ -18,3 +18,6 @@
 .content-manager-row .danger{justify-self:start;border:1px solid rgba(255,198,181,.75);padding:8px 12px;color:#ffc6b5;background:transparent;font:700 .68rem var(--sans);cursor:pointer}
 .content-manager-row .danger:hover{color:#103326;background:#ffc6b5}
 .content-manager-list form>.button-light{margin-top:22px}
+.category-toggle-row{display:flex;flex-wrap:wrap;align-items:center;gap:4px 14px}.category-toggle-row>.kicker{width:100%;margin:0 0 2px}
+.content-manager-row .nav-toggle,.content-manager-grid .nav-toggle{display:flex;flex-direction:row;align-items:center;gap:6px;width:auto;text-transform:none;letter-spacing:normal;font-size:.72rem;font-weight:700}
+.content-manager-row .nav-toggle input,.content-manager-grid .nav-toggle input{width:auto}

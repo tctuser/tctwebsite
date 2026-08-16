@@ -23,6 +23,7 @@ import {
   Phone,
   Search,
   Settings2,
+  Trophy,
   UsersRound,
   X,
 } from "lucide-react";
@@ -227,6 +228,7 @@ type AdminEditor =
   | "mediaLibrary"
   | "pages"
   | "forms"
+  | "tournaments"
   | "focus"
   | "assistant"
   | "booking"
@@ -281,6 +283,21 @@ type AiProposal = {
 const OWNER_EMAIL = "elfinko008@icloud.com";
 type TournamentFilter = "Alle" | "ITF" | "Jugend" | "LK" | "Herren" | "Damen";
 type TournamentCategory = Exclude<TournamentFilter, "Alle">;
+type Tournament = {
+  id: string;
+  date: string;
+  month: string;
+  kicker: string;
+  title: string;
+  categories: TournamentCategory[];
+  endsAt: string;
+  registrationEnabled: boolean;
+  admission: string;
+  prizeMoney: string;
+  venue: string;
+  mapsUrl: string;
+};
+const allTournamentCategories: TournamentCategory[] = ["ITF", "Herren", "Damen", "Jugend", "LK"];
 const tournamentEntries: Array<{
   date: string;
   month: string;
@@ -909,6 +926,85 @@ function BoardManager({
               <button className="button button-light" type="submit">Änderungen speichern <Check size={17} /></button>
             </form>
           ) : <p className="content-manager-empty">Noch kein Vorstand angelegt.</p>}
+        </section>
+      </div>
+    </div>
+  </div>;
+}
+
+function TournamentManager({
+  open, close, items, saveAll, addOne, remove, reorder,
+}: {
+  open: boolean; close: () => void; items: Tournament[];
+  saveAll: (event: FormEvent<HTMLFormElement>) => void;
+  addOne: (event: FormEvent<HTMLFormElement>) => void;
+  remove: (item: Tournament) => void;
+  reorder: (fromIndex: number, toIndex: number) => void;
+}) {
+  const [dragIndex, setDragIndex] = useState<number | null>(null);
+  if (!open) return null;
+  return <div className="editor-overlay content-manager" role="dialog" aria-modal="true" aria-label="Turniere verwalten">
+    <button className="admin-close" onClick={close} aria-label="Turnierverwaltung schließen"><X size={23} /></button>
+    <div className="content-manager-card">
+      <header><div><p className="eyebrow"><span /> Turniere</p><h2>Kalender.<br /><em>Pflegen.</em></h2><p>Turniere anlegen, Termine anpassen oder abgeschlossene Turniere entfernen. Ziehe eine Karte per Drag &amp; Drop, um die Reihenfolge zu ändern.</p></div></header>
+      <div className="content-manager-grid">
+        <form onSubmit={addOne}>
+          <p className="kicker">NEUES TURNIER</p>
+          <label>Titel<input required name="newTitle" placeholder="z. B. Herbstpokal 2026" /></label>
+          <label>Kicker <small>optional</small><input name="newKicker" placeholder="z. B. DAMEN & HERREN · LK TURNIER" /></label>
+          <label>Ende (Datum &amp; Uhrzeit)<input required name="newEndsAt" type="datetime-local" /></label>
+          <label>Anzeige-Datum <small>optional, sonst automatisch</small><input name="newDate" placeholder="z. B. 18 — 22" /></label>
+          <label>Anzeige-Monat <small>optional, sonst automatisch</small><input name="newMonth" placeholder="z. B. SEP" /></label>
+          <div className="category-toggle-row">
+            <p className="kicker">KATEGORIEN</p>
+            {allTournamentCategories.map((category) => (
+              <label key={category} className="nav-toggle"><input type="checkbox" name={`newCategory-${category}`} /> {category}</label>
+            ))}
+          </div>
+          <label className="nav-toggle"><input type="checkbox" name="newRegistration" /> Anmeldung über die Website erlauben</label>
+          <button className="button button-light" type="submit">Turnier anlegen <ArrowRight size={17} /></button>
+        </form>
+        <section className="content-manager-list">
+          <div><p className="kicker">ALLE TURNIERE</p></div>
+          {items.length ? (
+            <form onSubmit={saveAll}>
+              {items.map((item, index) => (
+                <article
+                  key={item.id}
+                  className={`content-manager-row draggable-row${dragIndex === index ? " dragging" : ""}`}
+                  draggable
+                  onDragStart={() => setDragIndex(index)}
+                  onDragOver={(event) => event.preventDefault()}
+                  onDrop={(event) => { event.preventDefault(); if (dragIndex !== null) reorder(dragIndex, index); setDragIndex(null); }}
+                  onDragEnd={() => setDragIndex(null)}
+                >
+                  <span className="content-manager-drag-handle" aria-hidden="true">⠿</span>
+                  <div>
+                    <label>Titel<input required name={`title-${index}`} defaultValue={item.title} /></label>
+                    <label>Kicker<input name={`kicker-${index}`} defaultValue={item.kicker} /></label>
+                    <div className="event-date-row">
+                      <label>Anzeige-Datum<input required name={`date-${index}`} defaultValue={item.date} /></label>
+                      <label>Anzeige-Monat<input required name={`month-${index}`} defaultValue={item.month} /></label>
+                    </div>
+                    <label>Ende (Datum &amp; Uhrzeit) <small>entscheidet, ob „Abgeschlossen“ angezeigt wird</small><input required name={`endsAt-${index}`} type="datetime-local" defaultValue={item.endsAt.slice(0, 16)} /></label>
+                    <div className="category-toggle-row">
+                      <p className="kicker">KATEGORIEN</p>
+                      {allTournamentCategories.map((category) => (
+                        <label key={category} className="nav-toggle"><input type="checkbox" name={`category-${index}-${category}`} defaultChecked={item.categories.includes(category)} /> {category}</label>
+                      ))}
+                    </div>
+                    <label className="nav-toggle"><input type="checkbox" name={`registration-${index}`} defaultChecked={item.registrationEnabled} /> Anmeldung über die Website erlauben</label>
+                    <label>Eintritt <small>optional</small><input name={`admission-${index}`} defaultValue={item.admission} placeholder="z. B. Mo–Fr frei · Wochenende kostenpflichtig" /></label>
+                    <label>Preisgeld <small>optional</small><input name={`prizeMoney-${index}`} defaultValue={item.prizeMoney} placeholder="z. B. 15.000 US-Dollar" /></label>
+                    <label>Austragungsort <small>optional</small><input name={`venue-${index}`} defaultValue={item.venue} placeholder="z. B. Am Stadion 1, 54292 Trier" /></label>
+                    <label>Google-Maps-Link <small>optional</small><input name={`mapsUrl-${index}`} defaultValue={item.mapsUrl} placeholder="https://www.google.com/maps/..." /></label>
+                    <button className="danger" type="button" onClick={() => remove(item)}>Löschen</button>
+                  </div>
+                </article>
+              ))}
+              <button className="button button-light" type="submit">Änderungen speichern <Check size={17} /></button>
+            </form>
+          ) : <p className="content-manager-empty">Noch keine Turniere angelegt.</p>}
         </section>
       </div>
     </div>
@@ -1974,6 +2070,16 @@ function App() {
       photo: boardPortraits[name] ?? "",
     })),
   );
+  const [liveTournaments, setLiveTournaments] = useState<Tournament[]>(
+    tournamentEntries.map((entry) => ({
+      ...entry,
+      id: entry.title.toLowerCase().replace(/[^a-z0-9]+/g, "-"),
+      admission: entry.admission ?? "",
+      prizeMoney: entry.prizeMoney ?? "",
+      venue: entry.venue ?? "",
+      mapsUrl: entry.mapsUrl ?? "",
+    })),
+  );
   const [liveHistory, setLiveHistory] = useState<HistoryEvent[]>(
     history.map(([year, title]) => ({
       id: year,
@@ -2059,7 +2165,7 @@ function App() {
   const [tournamentFilter, setTournamentFilter] =
     useState<TournamentFilter>("Alle");
   const [selectedTournament, setSelectedTournament] =
-    useState<(typeof tournamentEntries)[number] | null>(null);
+    useState<Tournament | null>(null);
   const [teamGroup, setTeamGroup] = useState(0);
 
   useEffect(() => {
@@ -2190,6 +2296,16 @@ function App() {
       if (Array.isArray(data?.value?.items)) setLiveBoard(data.value.items as BoardMember[]);
     };
     void loadBoard();
+  }, []);
+
+  useEffect(() => {
+    const client = supabase;
+    if (!client) return;
+    const loadTournaments = async () => {
+      const { data } = await client.from("club_content").select("value").eq("key", "tournaments").maybeSingle();
+      if (Array.isArray(data?.value?.items)) setLiveTournaments(data.value.items as Tournament[]);
+    };
+    void loadTournaments();
   }, []);
 
   useEffect(() => {
@@ -2496,14 +2612,14 @@ function App() {
     setTournamentFormSent(true);
   };
 
-  const shownTournaments = tournamentEntries.filter(
+  const shownTournaments = liveTournaments.filter(
     (entry) =>
       tournamentFilter === "Alle" ||
       entry.categories.includes(tournamentFilter),
   );
   const eventIsEnded = (event: PublicEvent) =>
     Boolean(event.ends_at && new Date(event.ends_at).getTime() < Date.now());
-  const tournamentIsEnded = (event: (typeof tournamentEntries)[number]) =>
+  const tournamentIsEnded = (event: Tournament) =>
     new Date(event.endsAt).getTime() < Date.now();
   const searchResults = [
     ...siteSearchIndex,
@@ -3963,6 +4079,7 @@ function App() {
     if (error) setAdminNotice(`Reihenfolge konnte nicht gespeichert werden: ${friendlyDbError(error)}`);
   };
   const reorderBoard = (from: number, to: number) => void reorderClubItems("board", liveBoard, setLiveBoard, from, to);
+  const reorderTournaments = (from: number, to: number) => void reorderClubItems("tournaments", liveTournaments, setLiveTournaments, from, to);
   const reorderHistory = (from: number, to: number) => void reorderClubItems("history", liveHistory, setLiveHistory, from, to);
   const reorderFacilities = (from: number, to: number) => void reorderClubItems("facilities", liveFacilities, setLiveFacilities, from, to);
   const reorderTeams = (from: number, to: number) => void reorderClubItems("teams", liveTeams, setLiveTeams, from, to);
@@ -4016,6 +4133,66 @@ function App() {
     if (error) { setAdminNotice(`Konnte nicht entfernt werden: ${friendlyDbError(error)}`); return; }
     if (item.photo) await removeClubMediaFile(item.photo);
     setLiveBoard(items); setAdminNotice(`${item.name} wurde entfernt.`);
+  };
+
+  // --- Turniere -----------------------------------------------------------
+  const saveTournaments = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    if (!supabase || !adminUserId) return;
+    const form = new FormData(event.currentTarget);
+    const items = liveTournaments.map((entry, index) => ({
+      ...entry,
+      date: String(form.get(`date-${index}`) ?? entry.date).trim(),
+      month: String(form.get(`month-${index}`) ?? entry.month).trim().toUpperCase(),
+      kicker: String(form.get(`kicker-${index}`) ?? entry.kicker).trim(),
+      title: String(form.get(`title-${index}`) ?? entry.title).trim(),
+      categories: allTournamentCategories.filter((category) => form.get(`category-${index}-${category}`) === "on"),
+      endsAt: String(form.get(`endsAt-${index}`) ?? entry.endsAt),
+      registrationEnabled: form.get(`registration-${index}`) === "on",
+      admission: String(form.get(`admission-${index}`) ?? entry.admission).trim(),
+      prizeMoney: String(form.get(`prizeMoney-${index}`) ?? entry.prizeMoney).trim(),
+      venue: String(form.get(`venue-${index}`) ?? entry.venue).trim(),
+      mapsUrl: String(form.get(`mapsUrl-${index}`) ?? entry.mapsUrl).trim(),
+    }));
+    const { error } = await supabase.from("club_content").upsert({ key: "tournaments", value: { items }, updated_by: adminUserId });
+    if (error) { setAdminNotice(`Turniere konnten nicht gespeichert werden: ${friendlyDbError(error)}`); return; }
+    setLiveTournaments(items); setAdminNotice("Turniere aktualisiert.");
+  };
+
+  const addTournament = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    if (!supabase || !adminUserId) return;
+    const form = new FormData(event.currentTarget);
+    const title = String(form.get("newTitle") ?? "").trim();
+    const endsAt = String(form.get("newEndsAt") ?? "");
+    if (!title || !endsAt) return;
+    const endsAtDate = new Date(endsAt);
+    const item: Tournament = {
+      id: crypto.randomUUID(),
+      title,
+      date: String(form.get("newDate") ?? "").trim() || String(endsAtDate.getDate()).padStart(2, "0"),
+      month: (String(form.get("newMonth") ?? "").trim() || endsAtDate.toLocaleDateString("de-DE", { month: "short" })).toUpperCase(),
+      kicker: String(form.get("newKicker") ?? "").trim(),
+      categories: allTournamentCategories.filter((category) => form.get(`newCategory-${category}`) === "on"),
+      endsAt: endsAtDate.toISOString(),
+      registrationEnabled: form.get("newRegistration") === "on",
+      admission: "",
+      prizeMoney: "",
+      venue: "",
+      mapsUrl: "",
+    };
+    const items = [...liveTournaments, item];
+    const { error } = await supabase.from("club_content").upsert({ key: "tournaments", value: { items }, updated_by: adminUserId });
+    if (error) { setAdminNotice(`Turnier konnte nicht angelegt werden: ${friendlyDbError(error)}`); return; }
+    setLiveTournaments(items); event.currentTarget.reset(); setAdminNotice(`„${title}“ wurde angelegt.`);
+  };
+
+  const deleteTournament = async (item: Tournament) => {
+    if (!supabase || !adminUserId || !window.confirm(`„${item.title}“ wirklich entfernen?`)) return;
+    const items = liveTournaments.filter((entry) => entry.id !== item.id);
+    const { error } = await supabase.from("club_content").upsert({ key: "tournaments", value: { items }, updated_by: adminUserId });
+    if (error) { setAdminNotice(`Konnte nicht entfernt werden: ${friendlyDbError(error)}`); return; }
+    setLiveTournaments(items); setAdminNotice(`„${item.title}“ wurde entfernt.`);
   };
 
   // --- Vereinschronik -----------------------------------------------------
@@ -4573,6 +4750,15 @@ function App() {
         remove={(item) => void deleteBoardMember(item)}
         uploadPhoto={(id, file) => void uploadBoardPhoto(id, file)}
         reorder={reorderBoard}
+      />
+      <TournamentManager
+        open={adminEditor === "tournaments" && canManageGeneralContent}
+        close={() => setAdminEditor(null)}
+        items={liveTournaments}
+        saveAll={(event) => void saveTournaments(event)}
+        addOne={(event) => void addTournament(event)}
+        remove={(item) => void deleteTournament(item)}
+        reorder={reorderTournaments}
       />
       <HistoryManager
         open={adminEditor === "history" && canManageGeneralContent}
@@ -5357,7 +5543,7 @@ function App() {
                 shownTournaments.map((event) => {
                   const ended = tournamentIsEnded(event);
                   const content = <><span className="date">{event.date} <small>{event.month}</small></span><div><p className="kicker">{ended ? "BEENDET" : event.kicker}</p><h3>{event.title}</h3>{event.admission && !ended && <p className="tournament-entry-price">Mo–Fr Eintritt frei · Wochenende kostenpflichtig</p>}</div></>;
-                  return ended ? <article className="tournament-entry is-ended" key={event.title}>{content}<span className="tournament-ended-label">Abgeschlossen</span></article> : <button className="tournament-entry" type="button" key={event.title} onClick={() => setSelectedTournament(event)}>{content}<ArrowRight size={22} /></button>;
+                  return ended ? <article className="tournament-entry is-ended" key={event.id}>{content}<span className="tournament-ended-label">Abgeschlossen</span></article> : <button className="tournament-entry" type="button" key={event.id} onClick={() => setSelectedTournament(event)}>{content}<ArrowRight size={22} /></button>;
                 })
               ) : (
                 <p className="tournament-empty">
@@ -6609,10 +6795,10 @@ function App() {
             <div className="admin-logo">
               <img src={officialImages.logo} alt="TCT 1888" />
             </div>
-            <p>TCT WEBSITE</p>
             <a className="selected">
               <LayoutDashboard size={18} /> Übersicht
             </a>
+            <p>INHALTE</p>
             {canManageNews && (
               <a onClick={() => setAdminEditor("news")}>
                 <Newspaper size={18} /> News
@@ -6623,24 +6809,19 @@ function App() {
                 <CalendarDays size={18} /> Termine
               </a>
             )}
-            {canManageBooking && (
-              <a onClick={() => setAdminEditor("booking")}>
-                <CalendarDays size={18} /> Buchungen
+            {canManageGeneralContent && (
+              <a onClick={() => setAdminEditor("tournaments")}>
+                <Trophy size={18} /> Turniere
+              </a>
+            )}
+            {canManageFocus && (
+              <a onClick={() => setAdminEditor("focus")}>
+                <Newspaper size={18} /> Im Fokus setzen
               </a>
             )}
             {canManageTeams && (
               <a onClick={() => setAdminEditor("teams")}>
                 <UsersRound size={18} /> Mannschaften
-              </a>
-            )}
-            {canManageGeneralContent && (
-              <a onClick={() => setAdminEditor("media")}>
-                <ImagePlus size={18} /> Medien
-              </a>
-            )}
-            {canManageGeneralContent && (
-              <a onClick={() => setAdminEditor("downloads")}>
-                <FileText size={18} /> PDFs &amp; Downloads
               </a>
             )}
             {canManageGeneralContent && (
@@ -6673,9 +6854,10 @@ function App() {
                 <LayoutDashboard size={18} /> Eigene Seiten
               </a>
             )}
+            <p>MEDIEN</p>
             {canManageGeneralContent && (
-              <a onClick={() => setAdminEditor("navigation")}>
-                <Menu size={18} /> Navigation
+              <a onClick={() => setAdminEditor("media")}>
+                <ImagePlus size={18} /> Website-Bilder
               </a>
             )}
             {canManageGeneralContent && (
@@ -6684,18 +6866,56 @@ function App() {
               </a>
             )}
             {canManageGeneralContent && (
+              <a onClick={() => setAdminEditor("downloads")}>
+                <FileText size={18} /> PDFs &amp; Downloads
+              </a>
+            )}
+            <p>WEBSITE</p>
+            {canManageGeneralContent && (
+              <a onClick={() => setAdminEditor("navigation")}>
+                <Menu size={18} /> Navigation
+              </a>
+            )}
+            {canManageGeneralContent && (
               <a onClick={() => setAdminEditor("forms")}>
                 <FileText size={18} /> Formulare
               </a>
             )}
-            {canManageInbox && (
-              <a onClick={() => setAdminEditor("inbox")}>
-                <Mail size={18} /> Postfach
+            {canManageGeneralContent && (
+              <a onClick={() => setAdminEditor("membership")}>
+                <FileText size={18} /> Mitgliedsbeiträge
+              </a>
+            )}
+            {canManageBooking && (
+              <a onClick={() => setAdminEditor("booking")}>
+                <CalendarDays size={18} /> Platzbuchung
               </a>
             )}
             {canManageGeneralContent && (
               <a onClick={() => setAdminEditor("club")}>
-                <Settings2 size={18} /> Einstellungen
+                <Settings2 size={18} /> Einstellungen &amp; Design
+              </a>
+            )}
+            <p>POSTFACH</p>
+            {canManageInbox && (
+              <a onClick={() => setAdminEditor("inbox")}>
+                <Mail size={18} /> Kontakt-Postfach
+              </a>
+            )}
+            {canManageTournamentInbox && (
+              <a onClick={() => setAdminEditor("tournamentInbox")}>
+                <Mail size={18} /> Turnier-Postfach
+              </a>
+            )}
+            <p>VERWALTUNG</p>
+            {adminEmail === OWNER_EMAIL && (
+              <a onClick={() => setAdminEditor("users")}>
+                <UsersRound size={18} /> Nutzer &amp; Rollen
+              </a>
+            )}
+            {(adminEmail === OWNER_EMAIL || adminRole === "management") && (
+              <a onClick={() => { setAuditOpen(true); void loadAudit(); }}>
+                <FileText size={18} /> Änderungslog
               </a>
             )}
             <a onClick={() => setAccountOpen(true)}>
@@ -6844,6 +7064,13 @@ function App() {
                 <button className="admin-task" onClick={() => setAdminEditor("partners")}>
                   <UsersRound size={19} />
                   <span><b>Partner verwalten</b><small>Logo, Website und Sponsoren sichtbar machen</small></span>
+                  <ArrowRight size={18} />
+                </button>
+              )}
+              {canManageGeneralContent && (
+                <button className="admin-task" onClick={() => setAdminEditor("tournaments")}>
+                  <Trophy size={19} />
+                  <span><b>Turniere verwalten</b><small>Turnierkalender anlegen, ändern und entfernen</small></span>
                   <ArrowRight size={18} />
                 </button>
               )}
