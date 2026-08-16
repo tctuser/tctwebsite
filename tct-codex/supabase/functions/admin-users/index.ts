@@ -73,8 +73,9 @@ Deno.serve(async (request) => {
   }
   const { data: callerProfile } = await admin.from('profiles').select('role').eq('id', user.id).maybeSingle()
   const isOwner = user.email?.trim().toLowerCase() === ownerEmail
+  const canManageUsers = isOwner || callerProfile?.role === 'management'
   if (body.action === 'list') {
-    if (!isOwner) return Response.json({ error: 'Nur der Eigentümer darf alle Registrierungen sehen.' }, { status: 403, headers: corsHeaders })
+    if (!canManageUsers) return Response.json({ error: 'Nur Management oder der Eigentümer dürfen alle Registrierungen sehen.' }, { status: 403, headers: corsHeaders })
     try {
       const authUsers = await listAllAuthUsers(admin)
       const { data: profiles, error } = await admin.from('profiles').select('id,display_name,username,login_email,role,must_change_password,email_verified,created_at')
@@ -100,10 +101,12 @@ Deno.serve(async (request) => {
     }
   }
   if (body.action === 'role') {
-    if (!isOwner) return Response.json({ error: 'Nur der Eigentümer darf Rollen verändern.' }, { status: 403, headers: corsHeaders })
+    if (!canManageUsers) return Response.json({ error: 'Nur Management oder der Eigentümer dürfen Rollen verändern.' }, { status: 403, headers: corsHeaders })
     const userId = typeof body.userId === 'string' ? body.userId : ''
     const role = typeof body.role === 'string' ? body.role : ''
     if (!userId || !assignableRoles.has(role)) return Response.json({ error: 'Ungültiger Benutzer oder ungültige Rolle.' }, { status: 400, headers: corsHeaders })
+    const { data: targetAuthForOwnerCheck } = await admin.auth.admin.getUserById(userId)
+    if (!isOwner && targetAuthForOwnerCheck?.user?.email?.trim().toLowerCase() === ownerEmail) return Response.json({ error: 'Die Rolle des Eigentümer-Kontos kann nicht verändert werden.' }, { status: 403, headers: corsHeaders })
     const { data: beforeProfile } = await admin.from('profiles').select('id,display_name,username,login_email,role').eq('id', userId).maybeSingle()
     let afterProfile: Record<string, unknown> | null
     let roleError: { message: string } | null
@@ -121,7 +124,6 @@ Deno.serve(async (request) => {
     if (!roleError) await writeUserAudit('UPDATE', userId, safeProfile(beforeProfile), safeProfile(afterProfile))
     return Response.json(roleError ? { error: roleError.message } : { ok: true }, { status: roleError ? 500 : 200, headers: corsHeaders })
   }
-  const canManageUsers = isOwner || callerProfile?.role === 'management'
   if (!canManageUsers) return Response.json({ error: 'Nicht berechtigt.' }, { status: 403, headers: corsHeaders })
   if (body.action === 'create') {
     const requestedEmail = typeof body.email === 'string' ? body.email.trim().toLowerCase() : ''

@@ -3208,10 +3208,10 @@ function App() {
   useEffect(() => {
     if (
       adminEditor === "users" &&
-      adminEmail === OWNER_EMAIL
+      (adminEmail === OWNER_EMAIL || adminRole === "management")
     )
       void loadManagedUsers();
-  }, [adminEditor, adminEmail]);
+  }, [adminEditor, adminEmail, adminRole]);
 
   const applyAuthenticatedUser = async (
     userId: string,
@@ -6914,7 +6914,7 @@ function App() {
               </a>
             )}
             <p>VERWALTUNG</p>
-            {adminEmail === OWNER_EMAIL && (
+            {(adminEmail === OWNER_EMAIL || adminRole === "management") && (
               <a onClick={() => setAdminEditor("users")}>
                 <UsersRound size={18} /> Nutzer &amp; Rollen
               </a>
@@ -7212,7 +7212,7 @@ function App() {
                 </span>
                 <ArrowRight size={18} />
               </button>
-              {adminEmail === OWNER_EMAIL && (
+              {(adminEmail === OWNER_EMAIL || adminRole === "management") && (
                 <button
                   className="admin-task"
                   onClick={() => setAdminEditor("users")}
@@ -8349,7 +8349,7 @@ function App() {
         </div>
       )}
       {adminEditor === "users" &&
-        adminEmail === OWNER_EMAIL && (
+        (adminEmail === OWNER_EMAIL || adminRole === "management") && (
           <div
             className="editor-overlay users-editor"
             role="dialog"
@@ -8367,7 +8367,7 @@ function App() {
               <div className="users-heading">
                 <div>
                   <p className="eyebrow">
-                    <span /> Nur für den Eigentümer
+                    <span /> Nur für Management &amp; Eigentümer
                   </p>
                   <h2>
                     Alle
@@ -8376,8 +8376,8 @@ function App() {
                   </h2>
                   <p>
                     Sieh jede Registrierung und vergib exakt die Rolle, die
-                    das Mitglied benötigt. Dieser Bereich ist ausschließlich
-                    für dein Eigentümer-Konto sichtbar.
+                    das Mitglied benötigt. Wer die Rolle „Management“ vergibt,
+                    gibt automatisch auch diesen Bereich hier weiter.
                   </p>
                 </div>
                 <button onClick={() => void loadManagedUsers()}>
