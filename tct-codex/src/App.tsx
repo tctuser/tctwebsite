@@ -698,13 +698,16 @@ function DownloadManager({
   items,
   save,
   remove,
+  reorder,
 }: {
   open: boolean;
   close: () => void;
   items: DownloadItem[];
   save: (event: FormEvent<HTMLFormElement>) => void;
   remove: (item: DownloadItem) => void;
+  reorder: (fromIndex: number, toIndex: number) => void;
 }) {
+  const [dragIndex, setDragIndex] = useState<number | null>(null);
   if (!open) return null;
   return (
     <div
@@ -733,7 +736,8 @@ function DownloadManager({
             </h2>
             <p>
               Hallenpreise, Aufnahmeantrag und weitere Vereinsunterlagen werden
-              hier hochgeladen, ersetzt oder entfernt.
+              hier hochgeladen, ersetzt oder entfernt. Ziehe eine Karte per Drag
+              &amp; Drop, um die Reihenfolge zu ändern.
             </p>
           </div>
         </header>
@@ -775,8 +779,17 @@ function DownloadManager({
               <p className="kicker">AKTUELLE DOWNLOADS</p>
             </div>
             {items.length ? (
-              items.map((download) => (
-                <article key={download.file}>
+              items.map((download, index) => (
+                <article
+                  key={download.file}
+                  className={`draggable-row${dragIndex === index ? " dragging" : ""}`}
+                  draggable
+                  onDragStart={() => setDragIndex(index)}
+                  onDragOver={(event) => event.preventDefault()}
+                  onDrop={(event) => { event.preventDefault(); if (dragIndex !== null) reorder(dragIndex, index); setDragIndex(null); }}
+                  onDragEnd={() => setDragIndex(null)}
+                >
+                  <span className="content-manager-drag-handle" aria-hidden="true">⠿</span>
                   <div>
                     <p className="kicker">{download.category}</p>
                     <h3>{download.title}</h3>
@@ -808,12 +821,13 @@ function DownloadManager({
   );
 }
 
-function PartnerManager({ open, close, items, save, remove }: { open: boolean; close: () => void; items: PartnerItem[]; save: (event: FormEvent<HTMLFormElement>) => void; remove: (item: PartnerItem) => void }) {
+function PartnerManager({ open, close, items, save, remove, reorder }: { open: boolean; close: () => void; items: PartnerItem[]; save: (event: FormEvent<HTMLFormElement>) => void; remove: (item: PartnerItem) => void; reorder: (fromIndex: number, toIndex: number) => void }) {
+  const [dragIndex, setDragIndex] = useState<number | null>(null);
   if (!open) return null;
   return <div className="editor-overlay content-manager" role="dialog" aria-modal="true" aria-label="Partner verwalten">
     <button className="admin-close" onClick={close} aria-label="Partnerverwaltung schließen"><X size={23} /></button>
     <div className="content-manager-card">
-      <header><div><p className="eyebrow"><span /> Partner & Sponsoren</p><h2>Partner.<br /><em>Sichtbar machen.</em></h2><p>Logo hochladen, Website verlinken und Partner jederzeit wieder entfernen.</p></div></header>
+      <header><div><p className="eyebrow"><span /> Partner & Sponsoren</p><h2>Partner.<br /><em>Sichtbar machen.</em></h2><p>Logo hochladen, Website verlinken und Partner jederzeit wieder entfernen. Ziehe eine Karte per Drag &amp; Drop, um die Reihenfolge zu ändern.</p></div></header>
       <div className="content-manager-grid">
         <form onSubmit={save}>
           <p className="kicker">NEUEN PARTNER ANLEGEN</p>
@@ -823,26 +837,36 @@ function PartnerManager({ open, close, items, save, remove }: { open: boolean; c
           <label>Hinweis <small>optional</small><textarea name="note" rows={3} placeholder="z. B. Unterstützt die TCT-Jugend" /></label>
           <button className="button button-light" type="submit">Partner veröffentlichen <ArrowRight size={17} /></button>
         </form>
-        <section className="content-manager-list"><div><p className="kicker">SICHTBARE PARTNER</p></div>{items.length ? items.map((item) => <article key={item.id}><img className="partner-admin-logo" src={item.logo} alt="" /><div><h3>{item.name}</h3><p>{item.website}</p>{item.note && <p>{item.note}</p>}<footer><a href={item.website} target="_blank" rel="noreferrer">Website öffnen</a><button className="danger" type="button" onClick={() => remove(item)}>Löschen</button></footer></div></article>) : <p className="content-manager-empty">Noch keine Partner angelegt.</p>}</section>
+        <section className="content-manager-list"><div><p className="kicker">SICHTBARE PARTNER</p></div>{items.length ? items.map((item, index) => <article
+          key={item.id}
+          className={`draggable-row${dragIndex === index ? " dragging" : ""}`}
+          draggable
+          onDragStart={() => setDragIndex(index)}
+          onDragOver={(event) => event.preventDefault()}
+          onDrop={(event) => { event.preventDefault(); if (dragIndex !== null) reorder(dragIndex, index); setDragIndex(null); }}
+          onDragEnd={() => setDragIndex(null)}
+        ><span className="content-manager-drag-handle" aria-hidden="true">⠿</span><img className="partner-admin-logo" src={item.logo} alt="" /><div><h3>{item.name}</h3><p>{item.website}</p>{item.note && <p>{item.note}</p>}<footer><a href={item.website} target="_blank" rel="noreferrer">Website öffnen</a><button className="danger" type="button" onClick={() => remove(item)}>Löschen</button></footer></div></article>) : <p className="content-manager-empty">Noch keine Partner angelegt.</p>}</section>
       </div>
     </div>
   </div>;
 }
 
 function BoardManager({
-  open, close, items, saveAll, addOne, remove, uploadPhoto,
+  open, close, items, saveAll, addOne, remove, uploadPhoto, reorder,
 }: {
   open: boolean; close: () => void; items: BoardMember[];
   saveAll: (event: FormEvent<HTMLFormElement>) => void;
   addOne: (event: FormEvent<HTMLFormElement>) => void;
   remove: (item: BoardMember) => void;
   uploadPhoto: (id: string, file: File) => void;
+  reorder: (fromIndex: number, toIndex: number) => void;
 }) {
+  const [dragIndex, setDragIndex] = useState<number | null>(null);
   if (!open) return null;
   return <div className="editor-overlay content-manager" role="dialog" aria-modal="true" aria-label="Vorstand verwalten">
     <button className="admin-close" onClick={close} aria-label="Vorstandsverwaltung schließen"><X size={23} /></button>
     <div className="content-manager-card">
-      <header><div><p className="eyebrow"><span /> Vorstand</p><h2>Vorstand.<br /><em>Pflegen.</em></h2><p>Namen und Rollen ändern, neue Mitglieder aufnehmen oder Fotos hinterlegen.</p></div></header>
+      <header><div><p className="eyebrow"><span /> Vorstand</p><h2>Vorstand.<br /><em>Pflegen.</em></h2><p>Namen und Rollen ändern, neue Mitglieder aufnehmen oder Fotos hinterlegen. Ziehe eine Karte per Drag &amp; Drop, um die Reihenfolge zu ändern.</p></div></header>
       <div className="content-manager-grid">
         <form onSubmit={addOne}>
           <p className="kicker">NEUES VORSTANDSMITGLIED</p>
@@ -855,7 +879,16 @@ function BoardManager({
           {items.length ? (
             <form onSubmit={saveAll}>
               {items.map((item, index) => (
-                <article key={item.id} className="content-manager-row">
+                <article
+                  key={item.id}
+                  className={`content-manager-row draggable-row${dragIndex === index ? " dragging" : ""}`}
+                  draggable
+                  onDragStart={() => setDragIndex(index)}
+                  onDragOver={(event) => event.preventDefault()}
+                  onDrop={(event) => { event.preventDefault(); if (dragIndex !== null) reorder(dragIndex, index); setDragIndex(null); }}
+                  onDragEnd={() => setDragIndex(null)}
+                >
+                  <span className="content-manager-drag-handle" aria-hidden="true">⠿</span>
                   {item.photo ? <img className="partner-admin-logo" src={item.photo} alt="" /> : <span className="content-manager-noimage">Kein Foto</span>}
                   <div>
                     <label>Name<input required name={`name-${index}`} defaultValue={item.name} /></label>
@@ -875,19 +908,21 @@ function BoardManager({
 }
 
 function HistoryManager({
-  open, close, items, saveAll, addOne, remove, uploadImage,
+  open, close, items, saveAll, addOne, remove, uploadImage, reorder,
 }: {
   open: boolean; close: () => void; items: HistoryEvent[];
   saveAll: (event: FormEvent<HTMLFormElement>) => void;
   addOne: (event: FormEvent<HTMLFormElement>) => void;
   remove: (item: HistoryEvent) => void;
   uploadImage: (id: string, file: File) => void;
+  reorder: (fromIndex: number, toIndex: number) => void;
 }) {
+  const [dragIndex, setDragIndex] = useState<number | null>(null);
   if (!open) return null;
   return <div className="editor-overlay content-manager" role="dialog" aria-modal="true" aria-label="Vereinschronik verwalten">
     <button className="admin-close" onClick={close} aria-label="Chronikverwaltung schließen"><X size={23} /></button>
     <div className="content-manager-card">
-      <header><div><p className="eyebrow"><span /> Vereinschronik</p><h2>Chronik.<br /><em>Fortschreiben.</em></h2><p>Meilensteine bearbeiten, neue Jahre ergänzen oder Einträge entfernen.</p></div></header>
+      <header><div><p className="eyebrow"><span /> Vereinschronik</p><h2>Chronik.<br /><em>Fortschreiben.</em></h2><p>Meilensteine bearbeiten, neue Jahre ergänzen oder Einträge entfernen. Ziehe eine Karte per Drag &amp; Drop, um die Reihenfolge zu ändern.</p></div></header>
       <div className="content-manager-grid">
         <form onSubmit={addOne}>
           <p className="kicker">NEUER CHRONIK-EINTRAG</p>
@@ -900,7 +935,16 @@ function HistoryManager({
           {items.length ? (
             <form onSubmit={saveAll}>
               {items.map((item, index) => (
-                <article key={item.id} className="content-manager-row">
+                <article
+                  key={item.id}
+                  className={`content-manager-row draggable-row${dragIndex === index ? " dragging" : ""}`}
+                  draggable
+                  onDragStart={() => setDragIndex(index)}
+                  onDragOver={(event) => event.preventDefault()}
+                  onDrop={(event) => { event.preventDefault(); if (dragIndex !== null) reorder(dragIndex, index); setDragIndex(null); }}
+                  onDragEnd={() => setDragIndex(null)}
+                >
+                  <span className="content-manager-drag-handle" aria-hidden="true">⠿</span>
                   {item.image ? <img className="partner-admin-logo" src={item.image} alt="" /> : <span className="content-manager-noimage">Kein Bild</span>}
                   <div>
                     <label>Jahr<input required name={`year-${index}`} defaultValue={item.year} /></label>
@@ -922,19 +966,21 @@ function HistoryManager({
 }
 
 function FacilityManager({
-  open, close, items, saveAll, addOne, remove, uploadImage,
+  open, close, items, saveAll, addOne, remove, uploadImage, reorder,
 }: {
   open: boolean; close: () => void; items: FacilityItem[];
   saveAll: (event: FormEvent<HTMLFormElement>) => void;
   addOne: (event: FormEvent<HTMLFormElement>) => void;
   remove: (item: FacilityItem) => void;
   uploadImage: (id: string, file: File) => void;
+  reorder: (fromIndex: number, toIndex: number) => void;
 }) {
+  const [dragIndex, setDragIndex] = useState<number | null>(null);
   if (!open) return null;
   return <div className="editor-overlay content-manager" role="dialog" aria-modal="true" aria-label="Anlage-Bereiche verwalten">
     <button className="admin-close" onClick={close} aria-label="Anlagenverwaltung schließen"><X size={23} /></button>
     <div className="content-manager-card">
-      <header><div><p className="eyebrow"><span /> Anlage</p><h2>Bereiche.<br /><em>Pflegen.</em></h2><p>Texte, Zahlen, Bilder und Buchungslinks für Außenplätze, Halle, Padel & Co.</p></div></header>
+      <header><div><p className="eyebrow"><span /> Anlage</p><h2>Bereiche.<br /><em>Pflegen.</em></h2><p>Texte, Zahlen, Bilder und Buchungslinks für Außenplätze, Halle, Padel & Co. Ziehe eine Karte per Drag &amp; Drop, um die Reihenfolge zu ändern.</p></div></header>
       <div className="content-manager-grid">
         <form onSubmit={addOne}>
           <p className="kicker">NEUER BEREICH</p>
@@ -948,7 +994,16 @@ function FacilityManager({
           {items.length ? (
             <form onSubmit={saveAll}>
               {items.map((item, index) => (
-                <article key={item.id} className="content-manager-row">
+                <article
+                  key={item.id}
+                  className={`content-manager-row draggable-row${dragIndex === index ? " dragging" : ""}`}
+                  draggable
+                  onDragStart={() => setDragIndex(index)}
+                  onDragOver={(event) => event.preventDefault()}
+                  onDrop={(event) => { event.preventDefault(); if (dragIndex !== null) reorder(dragIndex, index); setDragIndex(null); }}
+                  onDragEnd={() => setDragIndex(null)}
+                >
+                  <span className="content-manager-drag-handle" aria-hidden="true">⠿</span>
                   {item.image ? <img className="partner-admin-logo" src={item.image} alt="" /> : <span className="content-manager-noimage">Kein Bild</span>}
                   <div>
                     <label>Titel<input required name={`title-${index}`} defaultValue={item.title} /></label>
@@ -1753,6 +1808,7 @@ function App() {
     partnerFormEnabled: true,
     pausedMessage: "Dieses Formular ist gerade pausiert. Schreib uns gerne direkt per E-Mail.",
   });
+  const [teamDragIndex, setTeamDragIndex] = useState<number | null>(null);
 
   const navigate = (path: string) => {
     const url = new URL(path, window.location.origin);
@@ -3876,6 +3932,28 @@ function App() {
     if (match) await supabase!.storage.from("club-media").remove([match[1]]);
   };
 
+  const reorderClubItems = async <T,>(
+    key: string,
+    items: T[],
+    setItems: (items: T[]) => void,
+    fromIndex: number,
+    toIndex: number,
+  ) => {
+    if (!supabase || !adminUserId || fromIndex === toIndex) return;
+    const next = [...items];
+    const [moved] = next.splice(fromIndex, 1);
+    next.splice(toIndex, 0, moved);
+    setItems(next);
+    const { error } = await supabase.from("club_content").upsert({ key, value: { items: next }, updated_by: adminUserId });
+    if (error) setAdminNotice(`Reihenfolge konnte nicht gespeichert werden: ${friendlyDbError(error)}`);
+  };
+  const reorderBoard = (from: number, to: number) => void reorderClubItems("board", liveBoard, setLiveBoard, from, to);
+  const reorderHistory = (from: number, to: number) => void reorderClubItems("history", liveHistory, setLiveHistory, from, to);
+  const reorderFacilities = (from: number, to: number) => void reorderClubItems("facilities", liveFacilities, setLiveFacilities, from, to);
+  const reorderTeams = (from: number, to: number) => void reorderClubItems("teams", liveTeams, setLiveTeams, from, to);
+  const reorderPartners = (from: number, to: number) => void reorderClubItems("partners", livePartners, setLivePartners, from, to);
+  const reorderDownloads = (from: number, to: number) => void reorderClubItems("downloads", liveDownloads, setLiveDownloads, from, to);
+
   // --- Vorstand ---------------------------------------------------------
   const saveBoard = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
@@ -4461,6 +4539,7 @@ function App() {
         items={liveDownloads}
         save={(event) => void saveDownload(event)}
         remove={(item) => void deleteDownload(item)}
+        reorder={reorderDownloads}
       />
       <PartnerManager
         open={adminEditor === "partners" && canManageGeneralContent}
@@ -4468,6 +4547,7 @@ function App() {
         items={livePartners}
         save={(event) => void savePartner(event)}
         remove={(item) => void deletePartner(item)}
+        reorder={reorderPartners}
       />
       <BoardManager
         open={adminEditor === "board" && canManageGeneralContent}
@@ -4477,6 +4557,7 @@ function App() {
         addOne={(event) => void addBoardMember(event)}
         remove={(item) => void deleteBoardMember(item)}
         uploadPhoto={(id, file) => void uploadBoardPhoto(id, file)}
+        reorder={reorderBoard}
       />
       <HistoryManager
         open={adminEditor === "history" && canManageGeneralContent}
@@ -4486,6 +4567,7 @@ function App() {
         addOne={(event) => void addHistoryEvent(event)}
         remove={(item) => void deleteHistoryEvent(item)}
         uploadImage={(id, file) => void uploadHistoryImage(id, file)}
+        reorder={reorderHistory}
       />
       <FacilityManager
         open={adminEditor === "facilities" && canManageGeneralContent}
@@ -4495,6 +4577,7 @@ function App() {
         addOne={(event) => void addFacility(event)}
         remove={(item) => void deleteFacility(item)}
         uploadImage={(id, file) => void uploadFacilityImage(id, file)}
+        reorder={reorderFacilities}
       />
       <CustomBlockManager
         open={adminEditor === "blocks" && canManageGeneralContent}
@@ -7526,9 +7609,19 @@ function App() {
               <span /> Mannschaften
             </p>
             <h2>Bereiche pflegen</h2>
+            <p className="editor-help">Ziehe einen Bereich per Drag &amp; Drop, um die Reihenfolge zu ändern.</p>
             <form onSubmit={saveTeams}>
               {liveTeams.map((team, index) => (
-                <fieldset key={team.name}>
+                <fieldset
+                  key={team.name}
+                  className={`draggable-row${teamDragIndex === index ? " dragging" : ""}`}
+                  draggable
+                  onDragStart={() => setTeamDragIndex(index)}
+                  onDragOver={(event) => event.preventDefault()}
+                  onDrop={(event) => { event.preventDefault(); if (teamDragIndex !== null) reorderTeams(teamDragIndex, index); setTeamDragIndex(null); }}
+                  onDragEnd={() => setTeamDragIndex(null)}
+                >
+                  <span className="content-manager-drag-handle" aria-hidden="true">⠿</span>
                   <label>
                     Nummer
                     <input
