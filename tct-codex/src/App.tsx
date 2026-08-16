@@ -2046,6 +2046,11 @@ function App() {
   const [resendingCode, setResendingCode] = useState(false);
   const [showAuthPassword, setShowAuthPassword] = useState(false);
   const [adminNotice, setAdminNotice] = useState("");
+  useEffect(() => {
+    if (!adminNotice) return;
+    const timeout = window.setTimeout(() => setAdminNotice(""), 5000);
+    return () => window.clearTimeout(timeout);
+  }, [adminNotice]);
   const [adminEditor, setAdminEditor] = useState<AdminEditor>(null);
   const [adminUserId, setAdminUserId] = useState<string | null>(null);
   const [uploadPath, setUploadPath] = useState("");
