@@ -195,36 +195,42 @@
   background: var(--lime);
 }
 
-.quick-links-grid a span {
+.quick-links-grid a span.quick-link-icon {
   grid-column: 1 / -1;
+  display: grid;
+  place-items: center;
+  width: 54px;
+  height: 54px;
+  margin-bottom: 6px;
+  border-radius: 50%;
+  background: rgba(206, 241, 102, 0.16);
   color: var(--lime);
-  font: 500 0.65rem var(--mono);
-  letter-spacing: 0.11em;
 }
 
-.quick-links-grid a:hover span {
-  color: #527445;
+.quick-links-grid a:hover span.quick-link-icon {
+  background: rgba(17, 46, 37, 0.14);
+  color: var(--ink);
 }
 
 .quick-links-grid h3 {
-  margin: 0 0 8px;
-  font: 400 1.55rem/1 var(--serif);
-  letter-spacing: -0.035em;
+  margin: 0 0 9px;
+  font: 400 1.75rem/1.05 var(--serif);
+  letter-spacing: -0.03em;
 }
 
 .quick-links-grid p {
-  max-width: 185px;
+  max-width: 205px;
   margin: 0;
-  color: rgba(247, 245, 237, 0.67);
-  font-size: 0.72rem;
+  color: rgba(247, 245, 237, 0.86);
+  font-size: 0.84rem;
   line-height: 1.55;
 }
 
 .quick-links-grid a:hover p {
-  color: rgba(17, 46, 37, 0.72);
+  color: rgba(17, 46, 37, 0.82);
 }
 
-.quick-links-grid svg {
+.quick-links-grid a > svg:last-child {
   align-self: end;
 }
 
@@ -291,23 +297,38 @@
     margin-top: 20px;
   }
   .quick-links-grid {
-    grid-template-columns: 1fr 1fr;
+    grid-template-columns: 1fr;
+    border-top: 0;
   }
   .quick-links-grid a {
-    min-height: 166px;
-    padding: 16px 12px 14px 0;
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    text-align: center;
+    gap: 4px;
+    padding: 28px 16px;
+    border-right: 0;
   }
-  .quick-links-grid a:nth-child(3) {
-    padding-left: 0;
+  .quick-links-grid a span.quick-link-icon {
+    margin-bottom: 10px;
+    width: 54px;
+    height: 54px;
+    flex-shrink: 0;
   }
-  .quick-links-grid a:nth-child(3),
-  .quick-links-grid a:nth-child(4) {
-    border-top: 1px solid rgba(255, 255, 255, 0.25);
+  .quick-links-grid a > div {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+  }
+  .quick-links-grid a > svg:last-child {
+    margin-top: 12px;
   }
   .quick-links-grid h3 {
-    font-size: 1.3rem;
+    font-size: 1.35rem;
   }
   .quick-links-grid p {
-    font-size: 0.67rem;
+    max-width: 260px;
+    font-size: 0.8rem;
   }
 }

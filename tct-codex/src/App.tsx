@@ -24,6 +24,7 @@ import {
   Search,
   Settings2,
   Trophy,
+  UserPlus,
   UsersRound,
   X,
 } from "lucide-react";
@@ -5172,36 +5173,36 @@ function App() {
             </div>
             <div className="quick-links-grid">
               <a href="/mitglied-werden">
-                <span>01</span>
+                <span className="quick-link-icon"><UserPlus size={26} /></span>
                 <div>
                   <h3><EditableText id="home.quickLinks.card1.title" defaultValue="Mitglied werden" /></h3>
                   <p><EditableText id="home.quickLinks.card1.text" defaultValue="Beiträge ansehen und Aufnahme beantragen." /></p>
                 </div>
-                <ArrowRight size={20} />
+                <ArrowRight size={22} />
               </a>
               <a href="/booking">
-                <span>02</span>
+                <span className="quick-link-icon"><CalendarDays size={26} /></span>
                 <div>
                   <h3><EditableText id="home.quickLinks.card2.title" defaultValue="Platz buchen" /></h3>
                   <p><EditableText id="home.quickLinks.card2.text" defaultValue="Freie Plätze sehen und direkt reservieren." /></p>
                 </div>
-                <ArrowRight size={20} />
+                <ArrowRight size={22} />
               </a>
               <a href="/teams">
-                <span>03</span>
+                <span className="quick-link-icon"><UsersRound size={26} /></span>
                 <div>
                   <h3><EditableText id="home.quickLinks.card3.title" defaultValue="Teams entdecken" /></h3>
                   <p><EditableText id="home.quickLinks.card3.text" defaultValue="Alle Damen-, Herren- und Jugendteams." /></p>
                 </div>
-                <ArrowRight size={20} />
+                <ArrowRight size={22} />
               </a>
               <a href="/kontakt">
-                <span>04</span>
+                <span className="quick-link-icon"><Mail size={26} /></span>
                 <div>
                   <h3><EditableText id="home.quickLinks.card4.title" defaultValue="Kontakt aufnehmen" /></h3>
                   <p><EditableText id="home.quickLinks.card4.text" defaultValue="Fragen stellen oder den Club kennenlernen." /></p>
                 </div>
-                <ArrowRight size={20} />
+                <ArrowRight size={22} />
               </a>
             </div>
           </div>

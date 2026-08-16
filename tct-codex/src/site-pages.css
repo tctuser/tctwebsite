@@ -102,7 +102,6 @@
 @media(max-width:600px){
   .section-head{flex-direction:column;align-items:flex-start;gap:12px}
   .section-head>p{margin-block:0}
-  .quick-links-grid a{min-width:0;grid-template-columns:minmax(0,1fr) auto}
   .tournaments .filter-row{flex-wrap:wrap;overflow:visible}
   .tournament-entry>div{min-width:0}
   .tournament-entry.is-ended{grid-template-columns:90px minmax(0,1fr)}
