@@ -1747,7 +1747,7 @@ const sectionPageInfo: Record<string, { eyebrow: string; title: string; accent: 
   galerie: { eyebrow: "Momente vom Moselstadion", title: "TCT", accent: "Galerie.", text: "Mannschaften, Turniere, Anlage und Clubleben in Bildern." },
   partner: { eyebrow: "Gemeinsam für Trier", title: "Partner", accent: "werden.", text: "Sichtbarkeit, Sport und echtes Engagement für den Tennisclub Trier." },
   spielpartner: { eyebrow: "TCT Mitgliederbörse", title: "Spielpartner", accent: "finden.", text: "Finde unkompliziert ein Match, einen festen Termin oder neue Spielpartner im Club." },
-  impressum: { eyebrow: "Tennisclub Trier 1888 e.V.", title: "Impres", accent: "sum.", docTitle: "Impressum", text: "Angaben zum Anbieter und Kontaktmöglichkeiten des Tennisclub Trier." },
+  impressum: { eyebrow: "Tennisclub Trier 1888 e.V.", title: "Rechtliche", accent: "Angaben.", docTitle: "Impressum", text: "Angaben zum Anbieter und Kontaktmöglichkeiten des Tennisclub Trier." },
 };
 
 type SiteCopyApi = {
@@ -6101,7 +6101,7 @@ function App() {
                   Verantwortlich für diese Website ist der Tennisclub Trier 1888
                   e.V., Am Stadion 1, 54292 Trier, Deutschland. Bei Fragen zum
                   Datenschutz erreichst du den Verein unter{" "}
-                  <a href={`mailto:${club.email}`}>{club.email}</a>
+                  <a href={`mailto:${club.email}`}>{club.email}</a>{" "}
                   oder telefonisch unter{" "}
                   <a href={`tel:${club.phone.replaceAll(" ", "")}`}>
                     {club.phone}
@@ -6324,31 +6324,6 @@ function App() {
                 </div>
               </section>
             </div>
-          </div>
-        </div>
-      )}
-      {searchOpen && (
-        <div
-          className="search-overlay"
-          role="dialog"
-          aria-modal="true"
-          aria-label="Suche"
-        >
-          <button
-            className="menu-close"
-            onClick={() => setSearchOpen(false)}
-            aria-label="Suche schließen"
-          >
-            <X size={26} />
-          </button>
-          <div className="search-box">
-            <Search size={28} />
-            <input
-              autoFocus
-              placeholder="Wonach suchst du?"
-              aria-label="Suche"
-            />
-            <p>Suche nach Anlage, Mitgliedschaft, Turnieren oder Kontakt.</p>
           </div>
         </div>
       )}
@@ -7907,7 +7882,7 @@ function App() {
               autoFocus
               value={searchQuery}
               onChange={(event) => setSearchQuery(event.target.value)}
-              placeholder="Suche nach Turnier, Mannschaft, Mitgliedschaft …"
+              placeholder="Wonach suchst du?"
               aria-label="Website durchsuchen"
             />
             <div className="search-result-list">
